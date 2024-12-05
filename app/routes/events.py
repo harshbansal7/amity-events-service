@@ -21,7 +21,7 @@ def init_event_routes(mongo):
             data = request.form.to_dict()
             
             # Check required fields
-            required_fields = ['name', 'date', 'max_participants']
+            required_fields = ['name', 'date', 'max_participants', 'venue']
             if not all(field in data and data[field] != '' for field in required_fields):
                 return jsonify({'message': 'Missing required fields'}), 400
 
