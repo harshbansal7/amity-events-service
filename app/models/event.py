@@ -94,22 +94,33 @@ class Event:
         
         # Prepare update data
         update_fields = {}
-        allowed_fields = ['name', 'date', 'duration', 'max_participants', 
-                         'venue', 'description', 'prizes', 'image_url']
-        
-        for field in allowed_fields:
-            if field in update_data:
-                if field == 'date':
-                    update_fields[field] = parse(update_data[field])
-                elif field == 'duration':
-                    update_fields[field] = {
-                        'days': update_data.get('duration_days', 0),
-                        'hours': update_data.get('duration_hours', 0),
-                        'minutes': update_data.get('duration_minutes', 0)
-                    }
-                else:
-                    update_fields[field] = update_data[field]
-        
+        allowed_fields = ['name', 'date', 'max_participants', 'venue', 'description', 'prizes', 'image_url']
+        duration_fields = ['duration_days', 'duration_hours', 'duration_minutes']
+
+        # Handle non-duration fields
+        update_fields.update({
+            field: update_data[field] 
+            for field in allowed_fields 
+            if field in update_data
+        })
+
+        # Handle duration fields if any are present
+        if any(field in update_data for field in duration_fields):
+            minutes = int(update_data.get('duration_minutes') or 0)
+            hours = int(update_data.get('duration_hours') or 0) 
+            days = int(update_data.get('duration_days') or 0)
+
+            # Convert all to minutes then extract days/hours/minutes
+            total_minutes = minutes + (hours * 60) + (days * 24 * 60)
+            days, remainder = divmod(total_minutes, 24 * 60)
+            hours, minutes = divmod(remainder, 60)
+
+            update_fields['duration'] = {
+                'days': days,
+                'hours': hours, 
+                'minutes': minutes
+            }
+            
         if not update_fields:
             return False, "No valid fields to update"
         

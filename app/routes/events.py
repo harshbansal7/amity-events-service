@@ -1,7 +1,8 @@
+from datetime import timedelta
 from flask import Blueprint, request, jsonify, current_app
 from app.utils.auth_middleware import token_required
 from app.models.event import Event
-from app.utils.file_upload import save_image
+from app.utils.file_upload import FAILED_FILE_URL, save_image
 from dateutil.parser import parse
 from bson import json_util
 import json
@@ -20,12 +21,13 @@ def init_event_routes(mongo):
             data = request.form.to_dict()
             
             # Check required fields
-            required_fields = ['name', 'date', 'max_participants', 'venue', 'description']
-            if not all(field in data for field in required_fields):
+            required_fields = ['name', 'date', 'max_participants']
+            if not all(field in data and data[field] != '' for field in required_fields):
                 return jsonify({'message': 'Missing required fields'}), 400
 
             try:
-                data['date'] = parse(data['date'])
+                parsed_date = parse(data['date'])
+                data['date'] = parsed_date.replace(tzinfo=None) + timedelta(hours=5, minutes=30)
             except ValueError:
                 return jsonify({'message': 'Invalid date format'}), 400
 
@@ -35,6 +37,8 @@ def init_event_routes(mongo):
                 image_url = save_image(file)
                 if image_url:
                     data['image_url'] = image_url
+            else:
+                data['image_url'] = FAILED_FILE_URL
 
             event_id = event_model.create_event(data, current_user)
             return jsonify({
@@ -78,16 +82,24 @@ def init_event_routes(mongo):
             # Handle form data and file upload
             data = request.form.to_dict()
             
-            # Handle image upload if provided
+            try:
+                parsed_date = parse(data['date'])
+                data['date'] = parsed_date.replace(tzinfo=None) + timedelta(hours=5, minutes=30)
+            except ValueError:
+                return jsonify({'message': 'Invalid date format'}), 400
+
             if 'image' in request.files:
                 file = request.files['image']
                 image_url = save_image(file)
                 if image_url:
                     data['image_url'] = image_url
+            else:
+                data['image_url'] = FAILED_FILE_URL
             
             success, message = event_model.update_event(event_id, current_user, data)
             if success:
                 return jsonify({'message': message}), 200
+            print(message)
             return jsonify({'message': message}), 403
             
         except Exception as e:

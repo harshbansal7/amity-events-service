@@ -13,10 +13,6 @@ def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
     
-    # Add static file configuration
-    app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'static', 'uploads')
-    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-    
     # Test MongoDB connection
     try:
         mongo.init_app(app)
@@ -47,10 +43,5 @@ def create_app():
     @app.errorhandler(ServerSelectionTimeoutError)
     def handle_mongo_error(error):
         return jsonify({"error": "Database connection error. Please try again later."}), 500
-
-    # Add route to serve uploaded files
-    @app.route('/static/uploads/<filename>')
-    def serve_image(filename):
-        return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
     return app 

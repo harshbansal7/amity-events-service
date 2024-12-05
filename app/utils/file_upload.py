@@ -1,9 +1,10 @@
-import os
-from werkzeug.utils import secure_filename
+import requests
 from flask import current_app
-import uuid
+import os
 
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tiff', 'heic', 'svg', 'ico'}
+
+FAILED_FILE_URL = "https://next-images.123rf.com/index/_next/image/?url=https://assets-cdn.123rf.com/index/static/assets/top-section-bg.jpeg&w=3840&q=75"
 
 def allowed_file(filename):
     return '.' in filename and \
@@ -11,17 +12,30 @@ def allowed_file(filename):
 
 def save_image(file):
     if file and allowed_file(file.filename):
-        # Create unique filename
-        filename = str(uuid.uuid4()) + '_' + secure_filename(file.filename)
-        
-        # Ensure upload directory exists
-        upload_dir = os.path.join(current_app.root_path, 'static', 'uploads')
-        os.makedirs(upload_dir, exist_ok=True)
-        
-        # Save file
-        file_path = os.path.join(upload_dir, filename)
-        file.save(file_path)
-        
-        # Return URL path
-        return f'/static/uploads/{filename}'
-    return None 
+        try:
+            # Prepare the file upload to Fivemerr
+            files = {'file': (file.filename, file, file.mimetype)}
+            headers = {
+                'Authorization': os.getenv('FIVEMERR_API_KEY')
+            }
+            
+            # Make the POST request to Fivemerr
+            response = requests.post(
+                'https://api.fivemerr.com/v1/media/images',
+                files=files,
+                headers=headers,
+            )
+            
+            # Check if upload was successful
+            if response.status_code == 200:
+                data = response.json()
+                return data['url']  # Return the CDN URL
+            else:
+                print(f"Fivemerr upload failed: {response.text}")
+                return FAILED_FILE_URL
+                
+        except Exception as e:
+            print(f"Error uploading to Fivemerr: {str(e)}")
+            return FAILED_FILE_URL
+            
+    return FAILED_FILE_URL 
