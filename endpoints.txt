@@ -1,0 +1,130 @@
+EVENT MANAGEMENT SYSTEM API ENDPOINTS
+===================================
+
+Base URL: http://localhost:5005/api
+
+1. REGISTER USER
+Endpoint: POST /auth/register
+Purpose: Create new user account
+Request Body:
+{
+    "enrollment_number": "your_enrollment_number",
+    "password": "your_password"
+}
+
+Test with curl:
+curl -X POST http://localhost:5005/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"enrollment_number":"12345","password":"test123"}'
+
+2. LOGIN
+Endpoint: POST /auth/login
+Purpose: Get JWT token for authentication
+Request Body:
+{
+    "enrollment_number": "your_enrollment_number",
+    "password": "your_password"
+}
+
+Test with curl:
+curl -X POST http://localhost:5005/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"enrollment_number":"12345","password":"test123"}'
+
+3. CREATE EVENT
+Endpoint: POST /api/events
+Purpose: Create a new event
+Required: JWT token in Authorization header
+Request Body:
+{
+    "name": "Event Name",
+    "date": "2024-03-20T10:00:00",
+    "duration_days": 1,
+    "duration_hours": 2,
+    "duration_minutes": 30,
+    "max_participants": 50,
+    "venue": "Event Venue",
+    "description": "Event Description",
+    "prizes": ["First Prize", "Second Prize"]
+}
+
+Test with curl:
+curl -X POST http://localhost:5005/api/events \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Coding Competition",
+    "date": "2024-03-20T10:00:00",
+    "duration_days": 1,
+    "duration_hours": 2,
+    "max_participants": 50,
+    "venue": "Lab 1",
+    "description": "Annual coding competition"
+  }'
+
+4. GET ALL EVENTS
+Endpoint: GET /api/events
+Purpose: Retrieve list of all events
+Required: JWT token in Authorization header
+
+Test with curl:
+curl -X GET http://localhost:5005/api/events \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+
+5. REGISTER FOR EVENT
+Endpoint: POST /api/events/<event_id>/register
+Purpose: Register current user for specific event
+Required: JWT token in Authorization header
+
+Test with curl:
+curl -X POST http://localhost:5005/api/events/EVENT_ID/register \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+
+6. UNREGISTER FROM EVENT
+Endpoint: POST /api/events/<event_id>/unregister
+Purpose: Unregister current user from specific event
+Required: JWT token in Authorization header
+
+Test with curl:
+curl -X POST http://localhost:5005/api/events/EVENT_ID/unregister \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+
+7. GET REGISTERED EVENTS
+Endpoint: GET /api/events/registered
+Purpose: Get all events the current user has registered for
+Required: JWT token in Authorization header
+
+Test with curl:
+curl -X GET http://localhost:5005/api/events/registered \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+
+8. GET CREATED EVENTS
+Endpoint: GET /api/events/created
+Purpose: Get all events created by the current user
+Required: JWT token in Authorization header
+
+Test with curl:
+curl -X GET http://localhost:5005/api/events/created \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+
+TESTING FLOW:
+1. First register a new user
+2. Login with the user credentials to get JWT token
+3. Use the JWT token in subsequent requests
+4. Create an event
+5. View all events
+6. Register for an event
+
+COMMON HTTP RESPONSE CODES:
+200: Success
+201: Created successfully
+400: Bad request (missing/invalid data)
+401: Unauthorized (missing/invalid token)
+404: Not found
+
+NOTES:
+- Replace YOUR_JWT_TOKEN with the actual token received from login
+- Replace EVENT_ID with actual event ID when registering for event
+- All dates should be in ISO format
+- JWT token must be included in Authorization header as "Bearer <token>"
+- All request bodies must use Content-Type: application/json
