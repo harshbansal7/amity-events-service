@@ -1,12 +1,13 @@
 from datetime import timedelta
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify, current_app, send_file
 from app.utils.auth_middleware import token_required
 from app.models.event import Event
 from app.utils.file_upload import FAILED_FILE_URL, save_image
 from dateutil.parser import parse
-from bson import json_util
+from bson import json_util, ObjectId
 import json
 import os
+from datetime import datetime
 
 events_bp = Blueprint('events', __name__)
 
@@ -99,7 +100,6 @@ def init_event_routes(mongo):
             success, message = event_model.update_event(event_id, current_user, data)
             if success:
                 return jsonify({'message': message}), 200
-            print(message)
             return jsonify({'message': message}), 403
             
         except Exception as e:
@@ -144,5 +144,80 @@ def init_event_routes(mongo):
             return json.loads(json_util.dumps({'events': events})), 200
         except Exception as e:
             return jsonify({'message': f'Error fetching created events: {str(e)}'}), 500
+
+    @events_bp.route('/events/<event_id>/participants', methods=['GET'])
+    @token_required
+    def get_participants(current_user, event_id):
+        """Get list of participants for an event"""
+        
+        event = event_model.events_collection.find_one({'_id': ObjectId(event_id)})
+        if not event or event['creator_id'] != current_user:
+            return jsonify({'message': 'Unauthorized access'}), 403
+        
+        participants = event_model.get_event_participants(event_id)
+        if participants is None:
+            return jsonify({'message': 'Event not found'}), 404
+        
+        return jsonify(participants)
+
+    @events_bp.route('/events/<event_id>/participants/pdf', methods=['GET'])
+    @token_required
+    def download_pdf(current_user, event_id):
+        """Download participants list as PDF"""
+        
+        # Check if user is the event creator
+        event = event_model.events_collection.find_one({'_id': ObjectId(event_id)})
+        if not event or event['creator_id'] != current_user:
+            return jsonify({'message': 'Unauthorized access'}), 403
+        
+        # Get fields to be printed from query parameters
+        fields_printed = request.args.get('fields_printed')
+        
+        pdf_buffer = event_model.generate_pdf_report(event_id, fields_printed)
+        if pdf_buffer is None:
+            return jsonify({'message': 'Event not found'}), 404
+        
+        return send_file(
+            pdf_buffer,
+            download_name=f'participants_{event_id}_{datetime.now().strftime("%Y%m%d")}.pdf',
+            mimetype='application/pdf'
+        )
+
+    @events_bp.route('/events/<event_id>/participants/excel', methods=['GET'])
+    @token_required
+    def download_excel(current_user, event_id):
+        """Download participants list as Excel"""
+        
+        # Check if user is the event creator
+        event = event_model.events_collection.find_one({'_id': ObjectId(event_id)})
+        if not event or event['creator_id'] != current_user:
+            return jsonify({'message': 'Unauthorized access'}), 403
+        
+        # Get fields to be printed from query parameters
+        fields_printed = request.args.get('fields_printed')
+        
+        excel_buffer = event_model.generate_excel_report(event_id, fields_printed)
+        if excel_buffer is None:
+            return jsonify({'message': 'Event not found'}), 404
+        
+        return send_file(
+            excel_buffer,
+            download_name=f'participants_{event_id}_{datetime.now().strftime("%Y%m%d")}.xlsx',
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+
+    @events_bp.route('/events/<event_id>/participants/<enrollment_number>', methods=['DELETE'])
+    @token_required
+    def unregister_participant(current_user, event_id, enrollment_number):
+        """Unregister a participant from an event"""
+        
+        # Check if user is the event creator
+        event = event_model.events_collection.find_one({'_id': ObjectId(event_id)})
+        if not event or event['creator_id'] != current_user:
+            return jsonify({'message': 'Unauthorized access'}), 403
+        
+        if event_model.unregister_participant(event_id, enrollment_number):
+            return jsonify({'message': 'Participant unregistered successfully'})
+        return jsonify({'message': 'Failed to unregister participant'}), 400
 
     return events_bp 

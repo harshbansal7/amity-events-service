@@ -26,19 +26,14 @@ def create_app():
     app.register_blueprint(init_auth_routes(mongo), url_prefix='/api/auth')
     app.register_blueprint(init_event_routes(mongo), url_prefix='/api')
 
-    CORS(app, resources={
-        r"/api/*": {
-            "origins": [
-                "http://localhost:3000",
-                "https://amityevents.vercel.app"
-            ],
-            "methods": ["GET", "POST", "PUT", "DELETE"],
-            "allow_headers": ["Content-Type", "Authorization"]
-        },
-        r"/static/*": {
-            "origins": "*"
-        }
-    })
+    # Configure CORS
+    CORS(app, 
+        resources={r"/api/*": {"origins": ["http://localhost:3000", "https://amityevents.vercel.app"]}},
+        supports_credentials=True,
+        allow_headers=["Content-Type", "Authorization"],
+        methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        expose_headers=["Content-Type", "Authorization"]
+    )
 
     @app.errorhandler(ServerSelectionTimeoutError)
     def handle_mongo_error(error):
