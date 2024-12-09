@@ -1,66 +1,114 @@
 from flask import Blueprint, request, jsonify
-import bcrypt
-import jwt
-from datetime import datetime, timedelta
-from config import Config
 from app.models.user import User
+from app.utils.otp import OTPManager
+from app.utils.password import generate_password_hash, check_password_hash
+import jwt
+from datetime import datetime, timedelta, timezone
+from config import Config
 import re
 
-auth_bp = Blueprint('auth', __name__)
-
 def init_auth_routes(mongo):
+    auth = Blueprint('auth', __name__)
     user_model = User(mongo)
+    otp_manager = OTPManager(mongo)
 
-    @auth_bp.route('/register', methods=['POST'])
+    def is_valid_amity_email(email):
+        return bool(re.match(r'^[a-zA-Z0-9._%+-]+@s\.amity\.edu$', email))
+
+    @auth.route('/verify-email', methods=['POST'])
+    def verify_email():
+        data = request.get_json()
+        email = data.get('email')
+
+        if not email or not is_valid_amity_email(email):
+            return jsonify({'error': 'Please provide a valid Amity email address'}), 400
+
+        # Check if email is already registered
+        if user_model.user_exists(amity_email=email):
+            return jsonify({'error': 'Email already registered'}), 400
+
+        otp = otp_manager.generate_otp()
+        otp_manager.save_otp(email, otp)
+        
+        if otp_manager.send_otp_email(email, otp):
+            return jsonify({'message': 'OTP sent successfully'}), 200
+        return jsonify({'error': 'Failed to send OTP'}), 500
+
+    @auth.route('/verify-otp', methods=['POST'])
+    def verify_otp():
+        data = request.get_json()
+        email = data.get('email')
+        otp = data.get('otp')
+
+        if not email or not otp:
+            return jsonify({'error': 'Email and OTP are required'}), 400
+
+        if otp_manager.verify_otp(email, otp):
+            return jsonify({'message': 'OTP verified successfully'}), 200
+        return jsonify({'error': 'Invalid or expired OTP'}), 400
+
+    @auth.route('/register', methods=['POST'])
     def register():
         data = request.get_json()
         
-        # Check required fields
-        required_fields = ['enrollment_number', 'password', 'name', 'email', 'branch', 'year']
+        required_fields = ['name', 'amity_email', 'enrollment_number', 'password', 
+                         'branch', 'year', 'phone_number']
         if not all(field in data for field in required_fields):
-            return jsonify({'message': 'Missing required fields'}), 400
-
-        # Validate enrollment number format (assuming format like "20BAI1234")
-        if not re.match(r'^\d{2}[A-Z]{3}\d{4}$', data['enrollment_number']):
-            return jsonify({'message': 'Invalid enrollment number format'}), 400
+            return jsonify({'error': 'All fields are required'}), 400
 
         # Validate email format
-        if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', data['email']):
-            return jsonify({'message': 'Invalid email format'}), 400
+        if not is_valid_amity_email(data['amity_email']):
+            return jsonify({'error': 'Invalid Amity email address'}), 400
 
-        # Validate year (1-4)
-        try:
-            year = int(data['year'])
-            if year not in range(1, 5):
-                return jsonify({'message': 'Year must be between 1 and 4'}), 400
-        except ValueError:
-            return jsonify({'message': 'Invalid year format'}), 400
+        # Check if user already exists
+        if user_model.user_exists(amity_email=data['amity_email']):
+            return jsonify({'error': 'Email already registered'}), 400
 
-        if user_model.user_exists(data['enrollment_number']):
-            return jsonify({'message': 'User already exists'}), 400
+        if user_model.user_exists(enrollment_number=data['enrollment_number']):
+            return jsonify({'error': 'Enrollment number already registered'}), 400
 
-        hashed_password = bcrypt.hashpw(data['password'].encode('utf-8'), bcrypt.gensalt())
-        user_id = user_model.create_user(data, hashed_password)
+        # Create user
+        password_hash = generate_password_hash(data['password'])
+        user_id = user_model.create_user(data, password_hash)
 
-        return jsonify({'message': 'User created successfully'}), 201
+        return jsonify({
+            'message': 'Registration successful',
+            'user_id': str(user_id)
+        }), 201
 
-    @auth_bp.route('/login', methods=['POST'])
+    @auth.route('/login', methods=['POST'])
     def login():
         data = request.get_json()
-
+        
         if not data or not data.get('enrollment_number') or not data.get('password'):
-            return jsonify({'message': 'Missing required fields'}), 400
+            return jsonify({'error': 'Enrollment number and password are required'}), 400
 
         user = user_model.get_user_by_enrollment(data['enrollment_number'])
         
-        if not user or not bcrypt.checkpw(data['password'].encode('utf-8'), user['password']):
-            return jsonify({'message': 'Invalid credentials'}), 401
+        if not user:
+            return jsonify({'error': 'Invalid credentials'}), 401
+            
+        if not check_password_hash(data['password'], user['password']):
+            return jsonify({'error': 'Invalid credentials'}), 401
 
+        if not user.get('email_verified', False):
+            return jsonify({'error': 'Email not verified'}), 401
+
+        # Generate JWT token
         token = jwt.encode({
             'enrollment_number': user['enrollment_number'],
-            'exp': datetime.utcnow() + timedelta(seconds=Config.JWT_ACCESS_TOKEN_EXPIRES)
+            'exp': datetime.now(timezone.utc) + timedelta(seconds=Config.JWT_ACCESS_TOKEN_EXPIRES)
         }, Config.JWT_SECRET_KEY)
 
-        return jsonify({'token': token}), 200
+        return jsonify({
+            'token': token,
+            'user': {
+                'name': user['name'],
+                'enrollment_number': user['enrollment_number'],
+                'amity_email': user['amity_email'],
+                'branch': user['branch'],
+                'year': user['year']
+            }
+        }), 200
 
-    return auth_bp 
+    return auth 

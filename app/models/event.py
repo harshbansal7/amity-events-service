@@ -8,22 +8,19 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
 import xlsxwriter
+from app.models.user import User  # Import here to avoid circular imports
 
 class Event:
     def __init__(self, mongo):
         self.mongo = mongo
         self.collection = self.mongo.db.users
         self.events_collection = self.mongo.db.events
+        self.user_model = User(mongo)
 
     def create_event(self, event_data, creator_id):
         event = {
             'name': event_data['name'],
             'date': event_data['date'],
-            'duration': {
-                'days': event_data.get('duration_days', 0),
-                'hours': event_data.get('duration_hours', 0),
-                'minutes': event_data.get('duration_minutes', 0)
-            },
             'max_participants': event_data['max_participants'],
             'venue': event_data['venue'],
             'description': event_data['description'],
@@ -33,6 +30,21 @@ class Event:
             'created_at': datetime.now(),
             'image_url': event_data.get('image_url', None)
         }
+        minutes = int(event_data.get('duration_minutes') or 0)
+        hours = int(event_data.get('duration_hours') or 0) 
+        days = int(event_data.get('duration_days') or 0)
+
+        # Convert all to minutes then extract days/hours/minutes
+        total_minutes = minutes + (hours * 60) + (days * 24 * 60)
+        days, remainder = divmod(total_minutes, 24 * 60)
+        hours, minutes = divmod(remainder, 60)
+
+        event['duration'] = {
+            'days': days,
+            'hours': hours, 
+            'minutes': minutes
+        }
+
         result = self.events_collection.insert_one(event)
         return result.inserted_id
 
@@ -65,15 +77,28 @@ class Event:
         if not event:
             return False, "Event not found"
         
-        if user_id in event['participants']:
+        # Check if user is already registered (in either old or new format)
+        is_registered = any(
+            (isinstance(p, str) and p == user_id) or
+            (isinstance(p, dict) and p['enrollment_number'] == user_id)
+            for p in event['participants']
+        )
+        
+        if is_registered:
             return False, "Already registered"
             
         if len(event['participants']) >= int(event['max_participants']):
             return False, "Event is full"
 
+        # Add participant with registration timestamp
+        registration = {
+            'enrollment_number': user_id,
+            'registered_at': datetime.now()
+        }
+
         self.events_collection.update_one(
             {'_id': ObjectId(event_id)},
-            {'$push': {'participants': user_id}}
+            {'$push': {'participants': registration}}
         )
         return True, "Successfully registered"
 
@@ -146,20 +171,41 @@ class Event:
         if not event:
             return False, "Event not found"
         
-        if user_id not in event['participants']:
+        # Check if user is registered (in either old or new format)
+        is_registered = any(
+            (isinstance(p, str) and p == user_id) or
+            (isinstance(p, dict) and p['enrollment_number'] == user_id)
+            for p in event['participants']
+        )
+        
+        if not is_registered:
             return False, "Not registered for this event"
 
+        # First try to remove old format (string)
         result = self.events_collection.update_one(
             {'_id': ObjectId(event_id)},
             {'$pull': {'participants': user_id}}
         )
+
+        # If that didn't work, try removing new format (dict)
+        if not result.modified_count:
+            result = self.events_collection.update_one(
+                {'_id': ObjectId(event_id)},
+                {'$pull': {'participants': {'enrollment_number': user_id}}}
+            )
         
         if result.modified_count:
             return True, "Successfully unregistered"
         return False, "Failed to unregister"
 
     def get_registered_events(self, user_id):
-        events = list(self.events_collection.find({'participants': user_id}))
+        # Query for both old and new format
+        events = list(self.events_collection.find({
+            '$or': [
+                {'participants': user_id},  # Old format
+                {'participants.enrollment_number': user_id}  # New format
+            ]
+        }))
         for event in events:
             event['_id'] = str(event['_id'])
             if 'date' in event and not isinstance(event['date'], str):
@@ -178,26 +224,31 @@ class Event:
                 event['created_at'] = event['created_at'].isoformat()
         return events
 
-    def get_event_participants(self, event_id, fields_printed=None):
-        """Get detailed information about all participants of an event"""
-        event = self.events_collection.find_one({'_id': ObjectId(event_id)})
+    def get_event_participants(self, event_id):
+        event = self.get_event_by_id(event_id)
         if not event:
-            return None
+            return []
 
         participants = []
-        for enrollment_number in event.get('participants', []):
-            user = self.collection.find_one(
-                {'enrollment_number': enrollment_number},
-                {'password': 0}  # Exclude password
-            )
+        for participant_data in event['participants']:
+            # Handle both old format (string) and new format (dict)
+            if isinstance(participant_data, str):
+                enrollment_number = participant_data
+                registered_at = datetime.now()  # Default for old entries
+            else:
+                enrollment_number = participant_data['enrollment_number']
+                registered_at = participant_data['registered_at']
+
+            user = self.user_model.get_user_by_enrollment(enrollment_number)
             if user:
                 participants.append({
-                    'enrollment_number': user['enrollment_number'],
                     'name': user['name'],
-                    'email': user['email'],
+                    'enrollment_number': user['enrollment_number'],
+                    'amity_email': user['amity_email'],
                     'branch': user['branch'],
                     'year': user['year'],
-                    'registered_at': user.get('created_at')
+                    'phone_number': user['phone_number'],
+                    'registered_at': registered_at
                 })
 
         return participants
@@ -211,10 +262,11 @@ class Event:
         # Define all possible fields and their display names
         all_fields = {
             'name': 'Name',
-            'enrollment_number': 'Enrollment',
+            'enrollment_number': 'Enrollment Number',
+            'amity_email': 'Amity Email',
+            'phone_number': 'Phone Number',
             'branch': 'Branch',
             'year': 'Year',
-            'email': 'Email',
             'registered_at': 'Registration Date'
         }
         
@@ -226,7 +278,7 @@ class Event:
             selected_fields.insert(0, 'enrollment_number')
         
         buffer = BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=letter)
+        doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=30, leftMargin=30)
         elements = []
         
         # Create headers based on selected fields
@@ -237,36 +289,57 @@ class Event:
         for idx, participant in enumerate(participants, 1):
             row = [idx]
             for field in selected_fields:
+                value = participant[field]
                 if field == 'registered_at':
-                    row.append(participant[field].strftime("%Y-%m-%d %H:%M"))
-                else:
-                    row.append(participant[field])
+                    value = value.strftime("%d/%m/%Y %I:%M %p")
+                row.append(value)
             data.append(row)
         
-        # Calculate column widths based on number of fields
-        available_width = 560  # Total available width
+        # Calculate column widths based on content
+        available_width = 535  # Adjusted for margins
         num_columns = len(headers)
-        col_widths = [30]  # Width for No. column
+        col_widths = [25]  # Smaller width for No. column
         
-        remaining_width = available_width - 30
-        field_width = remaining_width / (num_columns - 1)
-        col_widths.extend([field_width] * (num_columns - 1))
+        # Distribute remaining width based on content type with adjusted percentages
+        field_widths = {
+            'name': 0.18,  # Increased for longer names
+            'enrollment_number': 0.15,
+            'amity_email': 0.22,  # Increased for longer email addresses
+            'phone_number': 0.12,
+            'branch': 0.08,  # Reduced as usually shorter
+            'year': 0.05,   # Reduced as just a number
+            'registered_at': 0.20  # Increased for date format
+        }
+        
+        remaining_width = available_width - 25
+        for field in selected_fields:
+            col_widths.append(remaining_width * field_widths[field])
         
         # Create table with calculated widths
         table = Table(data, colWidths=col_widths)
         table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('ALIGN', (0, 0), (0, -1), 'CENTER'),  # No. column centered
+            ('ALIGN', (1, 0), (1, -1), 'LEFT'),    # Name left-aligned
+            ('ALIGN', (2, 0), (2, -1), 'LEFT'),    # Enrollment left-aligned
+            ('ALIGN', (3, 0), (3, -1), 'LEFT'),    # Email left-aligned
+            ('ALIGN', (4, 0), (-1, -1), 'CENTER'), # Rest centered
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 0), (-1, 0), 12),
             ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
             ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
             ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 1), (-1, -1), 10),
+            ('FONTSIZE', (0, 1), (-1, -1), 9),     # Slightly smaller font
             ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('WORDWRAP', (0, 0), (-1, -1), True),
+            ('LEFTPADDING', (0, 0), (-1, -1), 6),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+            ('TOPPADDING', (0, 0), (-1, -1), 5),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+            ('ROWBACKGROUNDS', (0, 0), (-1, -1), [colors.white, colors.lightgrey])
         ]))
         
         elements.append(table)
@@ -284,16 +357,17 @@ class Event:
         # Define all possible fields and their display names
         all_fields = {
             'name': 'Name',
-            'enrollment_number': 'Enrollment',
+            'enrollment_number': 'Enrollment Number',
+            'amity_email': 'Amity Email',
+            'phone_number': 'Phone Number',
             'branch': 'Branch',
             'year': 'Year',
-            'email': 'Email',
             'registered_at': 'Registration Date'
         }
         
         # Parse fields_printed from comma-separated string
         selected_fields = fields_printed.split(',') if fields_printed else list(all_fields.keys())
-        print(selected_fields)
+        
         # Always include enrollment_number if not already included
         if 'enrollment_number' not in selected_fields:
             selected_fields.insert(0, 'enrollment_number')
@@ -313,7 +387,7 @@ class Event:
             for col, field in enumerate(selected_fields, 1):
                 value = participant[field]
                 if field == 'registered_at':
-                    value = value.strftime("%Y-%m-%d %H:%M")
+                    value = value.strftime("%d/%m/%Y %I:%M %p")
                 worksheet.write(row, col, value)
         
         workbook.close()

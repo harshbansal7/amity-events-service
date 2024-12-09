@@ -14,3 +14,8 @@ class Config:
         'connectTimeoutMS': 10000,
         'socketTimeoutMS': 10000
     }
+    
+    # Mailgun Configuration
+    MAILGUN_API_KEY = os.getenv('MAILGUN_API_KEY')
+    MAILGUN_DOMAIN = os.getenv('MAILGUN_DOMAIN')
+    MAILGUN_FROM_EMAIL = os.getenv('MAILGUN_FROM_EMAIL', 'noreply@amityevents.com')
