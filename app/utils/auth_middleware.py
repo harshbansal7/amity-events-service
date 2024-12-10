@@ -19,7 +19,7 @@ def token_required(f):
             
             # If user is external, check if their event still exists
             if data.get('is_external'):
-                kwargs['event_id'] = str(data['event_id'])
+                kwargs['event_code'] = data['event_code']
                 kwargs['is_external'] = True
 
         except jwt.ExpiredSignatureError:

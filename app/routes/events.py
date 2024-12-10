@@ -30,24 +30,19 @@ def init_event_routes(mongo):
             if not all(field in data and data[field] != '' for field in required_fields):
                 return jsonify({'message': 'Missing required fields'}), 400
 
+            # Convert boolean fields
+            data['allow_external'] = data.get('allow_external', 'false').lower() == 'true'
+            data['use_existing_code'] = data.get('use_existing_code', 'false').lower() == 'true'
+
+            # Validate existing code if specified
+            if data.get('use_existing_code') and not data.get('existing_event_code'):
+                return jsonify({'message': 'Event code is required when using existing code'}), 400
+
             try:
                 parsed_date = parse(data['date'])
                 data['date'] = parsed_date.replace(tzinfo=None) + timedelta(hours=5, minutes=30)
             except ValueError:
                 return jsonify({'message': 'Invalid date format'}), 400
-
-            # Convert allow_external string to boolean
-            if 'allow_external' in data:
-                data['allow_external'] = data['allow_external'].lower() == 'true'
-
-            # Handle image upload
-            if 'image' in request.files:
-                file = request.files['image']
-                image_url = save_image(file)
-                if image_url:
-                    data['image_url'] = image_url
-            else:
-                data['image_url'] = FAILED_FILE_URL
 
             event_id = event_model.create_event(data, current_user)
             return jsonify({
@@ -55,16 +50,18 @@ def init_event_routes(mongo):
                 'event_id': str(event_id)
             }), 201
 
+        except ValueError as e:
+            return jsonify({'message': str(e)}), 400
         except Exception as e:
             return jsonify({'message': f'Error creating event: {str(e)}'}), 500
 
     @events_bp.route('/events', methods=['GET'])
     @token_required
     def get_events(current_user, **kwargs):
-        # If external participant, only show their registered event
+        # If external participant, show all events with matching code
         if kwargs.get('is_external'):
-            event = event_model.get_event_by_id(kwargs.get('event_id'))
-            return json.loads(json_util.dumps({'events': [event] if event else []})), 200
+            events = event_model.get_events_by_code(kwargs.get('event_code'))
+            return json.loads(json_util.dumps({'events': events})), 200
 
         events = event_model.get_all_events()
         return json.loads(json_util.dumps({'events': events})), 200
@@ -232,9 +229,9 @@ def init_event_routes(mongo):
             return jsonify({'message': 'Participant unregistered successfully'})
         return jsonify({'message': 'Failed to unregister participant'}), 400
 
-    @events_bp.route('/events/<event_id>/participants/<enrollment_number>/attendance', methods=['POST'])
+    @events_bp.route('/events/<event_id>/attendance', methods=['POST'])
     @token_required
-    def mark_attendance(current_user, event_id, enrollment_number):
+    def mark_attendance(current_user, event_id):
         # Get the event
         event = event_model.get_event_by_id(event_id)
         if not event:
@@ -245,9 +242,9 @@ def init_event_routes(mongo):
             return jsonify({'error': 'Unauthorized'}), 403
 
         data = request.get_json()
-        status = data.get('status', False)
+        attendance_data = data.get('attendance', [])
         
-        success, message = event_model.mark_attendance(event_id, enrollment_number, status)
+        success, message = event_model.mark_batch_attendance(event_id, attendance_data)
         if success:
             return jsonify({'message': message}), 200
         return jsonify({'error': message}), 400

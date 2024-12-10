@@ -99,9 +99,10 @@ def init_auth_routes(mongo):
             # Generate JWT token for external participant
             token = jwt.encode({
                 'enrollment_number': user['temp_enrollment'],
+                'name': user['name'],
                 'exp': datetime.now(timezone.utc) + timedelta(seconds=Config.JWT_ACCESS_TOKEN_EXPIRES),
                 'is_external': True,
-                'event_id': user['event_id']
+                'event_code': user['event_code']
             }, Config.JWT_SECRET_KEY)
 
             return jsonify({
@@ -128,6 +129,7 @@ def init_auth_routes(mongo):
         # Generate JWT token
         token = jwt.encode({
             'enrollment_number': user['enrollment_number'],
+            'name': user['name'],
             'exp': datetime.now(timezone.utc) + timedelta(seconds=Config.JWT_ACCESS_TOKEN_EXPIRES)
         }, Config.JWT_SECRET_KEY)
 
@@ -189,11 +191,10 @@ def init_auth_routes(mongo):
         }
         
         participant_id = external_participant_model.create_external_participant(
-            participant_data, str(event['_id']), password_hash
+            participant_data, 
+            event['event_code'],
+            password_hash
         )
-
-        # Register for the event
-        event_model.register_participant(str(event['_id']), temp_enrollment)
 
         # Send credentials via email
         credentials = {

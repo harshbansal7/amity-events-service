@@ -24,6 +24,18 @@ class Event:
             chars = string.ascii_uppercase + string.digits
             return ''.join(random.choices(chars, k=6))
 
+        # If using existing code, verify it exists
+        if event_data.get('use_existing_code') and event_data.get('existing_event_code'):
+            existing_event = self.events_collection.find_one({
+                'event_code': event_data['existing_event_code'],
+                'allow_external': True
+            })
+            if not existing_event:
+                raise ValueError('Invalid existing event code')
+            event_code = event_data['existing_event_code']
+        else:
+            event_code = generate_event_code() if event_data.get('allow_external') else None
+
         event = {
             'name': event_data['name'],
             'date': event_data['date'],
@@ -36,8 +48,8 @@ class Event:
             'created_at': datetime.now(),
             'image_url': event_data.get('image_url', None),
             'allow_external': event_data.get('allow_external', False),
-            'event_code': generate_event_code() if event_data.get('allow_external') else None,
-            'external_participants': []  # Separate list for external participants
+            'event_code': event_code,
+            'external_participants': []
         }
         minutes = int(event_data.get('duration_minutes') or 0)
         hours = int(event_data.get('duration_hours') or 0) 
@@ -447,3 +459,34 @@ class Event:
         if result.modified_count:
             return True, "Attendance marked successfully"
         return False, "Failed to mark attendance"
+
+    def get_events_by_code(self, event_code):
+        """Get all events with matching event code"""
+        events = list(self.events_collection.find({
+            'event_code': event_code,
+            'allow_external': True
+        }))
+        
+        for event in events:
+            event['_id'] = str(event['_id'])
+            if 'date' in event and not isinstance(event['date'], str):
+                event['date'] = event['date'].isoformat()
+            if 'created_at' in event and not isinstance(event['created_at'], str):
+                event['created_at'] = event['created_at'].isoformat()
+        return events
+
+    def mark_batch_attendance(self, event_id, attendance_data):
+        """Mark attendance for multiple participants at once"""
+        try:
+            for record in attendance_data:
+                self.events_collection.update_one(
+                    {
+                        '_id': ObjectId(event_id),
+                        'participants.enrollment_number': record['enrollment_number']
+                    },
+                    {'$set': {'participants.$.attendance': record['attendance']}}
+                )
+            return True, "Attendance marked successfully"
+        except Exception as e:
+            print(f"Error marking batch attendance: {str(e)}")
+            return False, "Failed to mark attendance"

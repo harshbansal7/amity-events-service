@@ -15,14 +15,14 @@ class ExternalParticipant:
         temp_password = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
         return temp_id, temp_password
 
-    def create_external_participant(self, participant_data, event_id, password_hash):
+    def create_external_participant(self, participant_data, event_code, password_hash):
         participant = {
             'name': participant_data['name'],
             'email': participant_data['email'],
             'phone_number': participant_data['phone_number'],
             'temp_enrollment': participant_data['temp_enrollment'],
             'password': password_hash,
-            'event_id': event_id,
+            'event_code': event_code,
             'created_at': datetime.now(timezone.utc),
             'is_external': True
         }
