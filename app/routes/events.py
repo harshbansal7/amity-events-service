@@ -16,7 +16,11 @@ def init_event_routes(mongo):
 
     @events_bp.route('/events', methods=['POST'])
     @token_required
-    def create_event(current_user):
+    def create_event(current_user, **kwargs):
+        # Prevent external participants from creating events
+        if kwargs.get('is_external'):
+            return jsonify({'message': 'External participants cannot create events'}), 403
+
         try:
             # Handle form data
             data = request.form.to_dict()
@@ -31,6 +35,10 @@ def init_event_routes(mongo):
                 data['date'] = parsed_date.replace(tzinfo=None) + timedelta(hours=5, minutes=30)
             except ValueError:
                 return jsonify({'message': 'Invalid date format'}), 400
+
+            # Convert allow_external string to boolean
+            if 'allow_external' in data:
+                data['allow_external'] = data['allow_external'].lower() == 'true'
 
             # Handle image upload
             if 'image' in request.files:
@@ -52,14 +60,18 @@ def init_event_routes(mongo):
 
     @events_bp.route('/events', methods=['GET'])
     @token_required
-    def get_events(current_user):
+    def get_events(current_user, **kwargs):
+        # If external participant, only show their registered event
+        if kwargs.get('is_external'):
+            event = event_model.get_event_by_id(kwargs.get('event_id'))
+            return json.loads(json_util.dumps({'events': [event] if event else []})), 200
+
         events = event_model.get_all_events()
-        # Convert BSON to JSON using json_util
         return json.loads(json_util.dumps({'events': events})), 200
 
     @events_bp.route('/events/<event_id>/register', methods=['POST'])
     @token_required
-    def register_for_event(current_user, event_id):
+    def register_for_event(current_user, event_id, **kwargs):
         success, message = event_model.register_participant(event_id, current_user)
         if success:
             return jsonify({'message': message}), 200
@@ -118,7 +130,7 @@ def init_event_routes(mongo):
 
     @events_bp.route('/events/<event_id>/unregister', methods=['POST'])
     @token_required
-    def unregister_from_event(current_user, event_id):
+    def unregister_from_event(current_user, event_id, **kwargs):
         try:
             success, message = event_model.unregister_participant(event_id, current_user)
             if success:
@@ -219,5 +231,25 @@ def init_event_routes(mongo):
         if event_model.unregister_participant(event_id, enrollment_number):
             return jsonify({'message': 'Participant unregistered successfully'})
         return jsonify({'message': 'Failed to unregister participant'}), 400
+
+    @events_bp.route('/events/<event_id>/participants/<enrollment_number>/attendance', methods=['POST'])
+    @token_required
+    def mark_attendance(current_user, event_id, enrollment_number):
+        # Get the event
+        event = event_model.get_event_by_id(event_id)
+        if not event:
+            return jsonify({'error': 'Event not found'}), 404
+            
+        # Only event creator can mark attendance
+        if str(event['creator_id']) != str(current_user):
+            return jsonify({'error': 'Unauthorized'}), 403
+
+        data = request.get_json()
+        status = data.get('status', False)
+        
+        success, message = event_model.mark_attendance(event_id, enrollment_number, status)
+        if success:
+            return jsonify({'message': message}), 200
+        return jsonify({'error': message}), 400
 
     return events_bp 

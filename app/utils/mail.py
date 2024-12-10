@@ -67,4 +67,46 @@ class MailgunMailer:
         </div>
         """
 
+        return self.send_email(to_email, subject, text=text, html=html)
+
+    def send_external_credentials(self, to_email, name, event_name, credentials):
+        """
+        Send credentials to external participant
+        """
+        subject = f"Your Login Credentials for {event_name}"
+        
+        text = f"""
+        Hello {name},
+
+        Thank you for registering for {event_name}. Here are your login credentials:
+
+        Enrollment Number: {credentials['enrollment_number']}
+        Password: {credentials['password']}
+
+        Please save these credentials as they cannot be recovered later.
+        You can use these credentials to login and view event details.
+
+        Best regards,
+        Amity Events Team
+        """
+
+        html = f"""
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #4F46E5;">Amity Events Registration</h2>
+            <p>Hello {name},</p>
+            <p>Thank you for registering for <strong>{event_name}</strong>. Here are your login credentials:</p>
+            <div style="background-color: #F3F4F6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                <p style="margin: 0; font-family: monospace; font-size: 16px;">
+                    <strong>Enrollment Number:</strong> {credentials['enrollment_number']}<br>
+                    <strong>Password:</strong> {credentials['password']}
+                </p>
+            </div>
+            <p style="color: #DC2626; font-weight: bold;">
+                Please save these credentials as they cannot be recovered later.
+            </p>
+            <p>You can use these credentials to login and view event details.</p>
+            <p>Best regards,<br>Amity Events Team</p>
+        </div>
+        """
+
         return self.send_email(to_email, subject, text=text, html=html) 

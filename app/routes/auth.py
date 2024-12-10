@@ -1,5 +1,7 @@
 from flask import Blueprint, request, jsonify
 from app.models.user import User
+from app.models.event import Event
+from app.models.external_participant import ExternalParticipant
 from app.utils.otp import OTPManager
 from app.utils.password import generate_password_hash, check_password_hash
 import jwt
@@ -11,6 +13,8 @@ def init_auth_routes(mongo):
     auth = Blueprint('auth', __name__)
     user_model = User(mongo)
     otp_manager = OTPManager(mongo)
+    external_participant_model = ExternalParticipant(mongo)
+    event_model = Event(mongo)
 
     def is_valid_amity_email(email):
         return bool(re.match(r'^[a-zA-Z0-9._%+-]+@s\.amity\.edu$', email))
@@ -83,6 +87,33 @@ def init_auth_routes(mongo):
         if not data or not data.get('enrollment_number') or not data.get('password'):
             return jsonify({'error': 'Enrollment number and password are required'}), 400
 
+        # Check if it's an external participant (enrollment starts with 'EXT')
+        if data['enrollment_number'].startswith('EXT'):
+            user = external_participant_model.get_by_temp_enrollment(data['enrollment_number'])
+            if not user:
+                return jsonify({'error': 'Invalid credentials'}), 401
+                
+            if not check_password_hash(data['password'], user['password']):
+                return jsonify({'error': 'Invalid credentials'}), 401
+
+            # Generate JWT token for external participant
+            token = jwt.encode({
+                'enrollment_number': user['temp_enrollment'],
+                'exp': datetime.now(timezone.utc) + timedelta(seconds=Config.JWT_ACCESS_TOKEN_EXPIRES),
+                'is_external': True,
+                'event_id': user['event_id']
+            }, Config.JWT_SECRET_KEY)
+
+            return jsonify({
+                'token': token,
+                'user': {
+                    'name': user['name'],
+                    'enrollment_number': user['temp_enrollment'],
+                    'email': user['email'],
+                    'is_external': True
+                }
+            }), 200
+
         user = user_model.get_user_by_enrollment(data['enrollment_number'])
         
         if not user:
@@ -110,5 +141,81 @@ def init_auth_routes(mongo):
                 'year': user['year']
             }
         }), 200
+
+    @auth.route('/verify-event-code', methods=['POST'])
+    def verify_event_code():
+        data = request.get_json()
+        event_code = data.get('event_code')
+        
+        if not event_code:
+            return jsonify({'error': 'Event code is required'}), 400
+
+        event = mongo.db.events.find_one({
+            'event_code': event_code,
+            'allow_external': True,
+        })
+        
+        if not event:
+            return jsonify({'error': 'Invalid or expired event code'}), 400
+
+        return jsonify({
+            'message': 'Valid event code',
+            'event_name': event['name']
+        }), 200
+
+    @auth.route('/register-external', methods=['POST'])
+    def register_external():
+        data = request.get_json()
+        
+        # Validate event code
+        event = mongo.db.events.find_one({
+            'event_code': data.get('event_code'),
+            'allow_external': True
+        })
+        
+        if not event:
+            return jsonify({'error': 'Invalid event code'}), 400
+
+        # Generate temporary credentials
+        temp_enrollment, temp_password = external_participant_model.generate_temp_credentials()
+        
+        # Create external participant
+        password_hash = generate_password_hash(temp_password)
+        participant_data = {
+            'name': data['name'],
+            'email': data['email'],
+            'phone_number': data['phone_number'],
+            'temp_enrollment': temp_enrollment
+        }
+        
+        participant_id = external_participant_model.create_external_participant(
+            participant_data, str(event['_id']), password_hash
+        )
+
+        # Register for the event
+        event_model.register_participant(str(event['_id']), temp_enrollment)
+
+        # Send credentials via email
+        credentials = {
+            'enrollment_number': temp_enrollment,
+            'password': temp_password
+        }
+        
+        from app.utils.mail import MailgunMailer
+        mailer = MailgunMailer()
+        mailer.send_external_credentials(
+            data['email'],
+            data['name'],
+            event['name'],
+            credentials
+        )
+
+        return jsonify({
+            'message': 'Registration successful',
+            'credentials': {
+                'enrollment_number': temp_enrollment,
+                'password': temp_password
+            }
+        }), 201
 
     return auth 
