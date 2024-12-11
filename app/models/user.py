@@ -1,6 +1,8 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+import jwt
 from flask_pymongo import PyMongo
 from bson import ObjectId
+from config import Config
 
 class User:
     def __init__(self, mongo):
@@ -51,3 +53,27 @@ class User:
         if user:
             user['_id'] = str(user['_id'])
         return user
+
+    def create_password_reset_token(self, email):
+        """Create a password reset token"""
+        token = jwt.encode({
+            'email': email,
+            'exp': datetime.now(timezone.utc) + timedelta(minutes=30)
+        }, Config.JWT_SECRET_KEY)
+        return token
+
+    def verify_reset_token(self, token):
+        """Verify a password reset token"""
+        try:
+            data = jwt.decode(token, Config.JWT_SECRET_KEY, algorithms=["HS256"])
+            return data['email']
+        except:
+            return None
+
+    def update_password(self, email, password_hash):
+        """Update user password"""
+        result = self.collection.update_one(
+            {'amity_email': email},
+            {'$set': {'password': password_hash}}
+        )
+        return result.modified_count > 0

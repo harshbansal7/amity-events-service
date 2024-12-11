@@ -222,4 +222,68 @@ def init_auth_routes(mongo):
             }
         }), 201
 
+    @auth.route('/forgot-password', methods=['POST'])
+    def forgot_password():
+        data = request.get_json()
+        email = data.get('email')
+
+        if not email or not is_valid_amity_email(email):
+            return jsonify({'error': 'Please provide a valid Amity email address'}), 400
+
+        # Check if user exists
+        user = user_model.get_user_by_email(email)
+        if not user:
+            return jsonify({'error': 'No account found with this email'}), 404
+
+        # Generate and save reset token
+        # reset_token = user_model.create_password_reset_token(email)
+        
+        # Send reset email
+        otp = otp_manager.generate_otp()
+        otp_manager.save_otp(email, otp)
+        
+        if otp_manager.send_password_reset_email(email, otp):
+            return jsonify({'message': 'Password reset instructions sent'}), 200
+        return jsonify({'error': 'Failed to send reset instructions'}), 500
+
+    @auth.route('/verify-reset-otp', methods=['POST'])
+    def verify_reset_otp():
+        data = request.get_json()
+        email = data.get('email')
+        otp = data.get('otp')
+
+        if not email or not otp:
+            return jsonify({'error': 'Email and OTP are required'}), 400
+
+        if otp_manager.verify_otp(email, otp):
+            reset_token = user_model.create_password_reset_token(email)
+            return jsonify({
+                'message': 'OTP verified successfully',
+                'reset_token': reset_token
+            }), 200
+        return jsonify({'error': 'Invalid or expired OTP'}), 400
+
+    @auth.route('/reset-password', methods=['POST'])
+    def reset_password():
+        data = request.get_json()
+        reset_token = data.get('reset_token')
+        new_password = data.get('new_password')
+
+        if not reset_token or not new_password:
+            return jsonify({'error': 'Reset token and new password are required'}), 400
+
+        try:
+            # Verify reset token and update password
+            email = user_model.verify_reset_token(reset_token)
+            if not email:
+                return jsonify({'error': 'Invalid or expired reset token'}), 400
+
+            # Update password
+            password_hash = generate_password_hash(new_password)
+            user_model.update_password(email, password_hash)
+
+            return jsonify({'message': 'Password updated successfully'}), 200
+        except Exception as e:
+            return jsonify({'error': str(e)}), 400
+
     return auth 

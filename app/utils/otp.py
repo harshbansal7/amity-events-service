@@ -40,3 +40,6 @@ class OTPManager:
 
     def send_otp_email(self, email, otp):
         return self.mailer.send_otp_email(email, otp) 
+    
+    def send_password_reset_email(self, email, otp):
+        return self.mailer.send_password_reset_email(email, otp)

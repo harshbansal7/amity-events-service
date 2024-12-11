@@ -109,4 +109,40 @@ class MailgunMailer:
         </div>
         """
 
+        return self.send_email(to_email, subject, text=text, html=html)
+
+    def send_password_reset_email(self, to_email, otp):
+        """Send password reset email with OTP"""
+        subject = "Reset Your Amity Events Password"
+        
+        text = f"""
+        Hello,
+
+        You have requested to reset your password for Amity Events.
+        Your password reset OTP is: {otp}
+
+        This OTP will expire in 10 minutes.
+        If you did not request this reset, please ignore this email.
+
+        Best regards,
+        Amity Events Team
+        """
+
+        html = f"""
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #4F46E5;">Reset Your Password</h2>
+            <p>Hello,</p>
+            <p>You have requested to reset your password for Amity Events.</p>
+            <p>Your password reset OTP is:</p>
+            <div style="background-color: #F3F4F6; padding: 20px; text-align: center; border-radius: 8px;">
+                <h1 style="color: #4F46E5; font-size: 32px; margin: 0;">{otp}</h1>
+            </div>
+            <p style="color: #6B7280; font-size: 14px;">This OTP will expire in 10 minutes.</p>
+            <p style="color: #DC2626; font-size: 14px;">
+                If you did not request this reset, please ignore this email.
+            </p>
+            <p>Best regards,<br>Amity Events Team</p>
+        </div>
+        """
+
         return self.send_email(to_email, subject, text=text, html=html) 
