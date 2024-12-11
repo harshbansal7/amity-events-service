@@ -155,6 +155,9 @@ def init_auth_routes(mongo):
         event = mongo.db.events.find_one({
             'event_code': event_code,
             'allow_external': True,
+            'date': {
+                '$gte': datetime.now(timezone.utc)
+            }
         })
         
         if not event:
