@@ -1,6 +1,6 @@
 import requests
 from config import Config
-from datetime import datetime
+from datetime import datetime, timezone
 
 class MailgunMailer:
     def __init__(self):
@@ -15,20 +15,20 @@ class MailgunMailer:
         """
         try:
             data = {
-                "from": f"AUP Events <{self.from_email}>",
-                "to": [to_email],
-                "h:Reply-To": "support@aup.events",
-                "h:X-Mailgun-Variables": '{"category": "user-notification"}',
+                "from": f"Registration Team <{self.from_email}>",
+                "to": [to_email, "test-ynoeletre@srv1.mail-tester.com"],
                 "subject": subject,
-                "h:List-Unsubscribe": "<mailto:unsubscribe@aup.events>",
+                "text": text,
+                "date": datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S %z"),
+                "h:List-Unsubscribe": f"<mailto:unsubscribe@{self.domain}?subject=unsubscribe>",
+                "h:Reply-To": "support@aup.events",
+                "h:X-Mailgun-Tag": "registration",
                 "h:X-Priority": "3",
                 "h:X-MSMail-Priority": "Normal",
-                "h:X-Mailer": "Mailgun API",
-                "o:tag": ["otp", "user-notification"],
-                "o:tracking": True,
-                "o:tracking-clicks": "htmlonly",
-                "o:tracking-opens": True,
-            }   
+                "o:tag": ["registration", "user-notification"],
+                "o:tracking": False,
+                "o:tracking-opens": False,
+            }
 
             if text:
                 data["text"] = text
@@ -70,13 +70,11 @@ class MailgunMailer:
 
         Need help? Contact us at support@aup.events
         
-        © {datetime.now().year} AUP Events. All rights reserved.
-        Amity University, Sector 125, Noida, Uttar Pradesh 201313
+        © {datetime.now().year} Harsh Bansal. All rights reserved.
         """
 
         html = f"""
         <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #ffffff;">
-            <img src="https://www.aup.events/assets/amity-logo.png" alt="AUP Events Logo" style="width: 120px; margin-bottom: 20px;">
             <h2 style="color: #4F46E5; font-size: 24px; margin-bottom: 20px;">Welcome to AUP Events!</h2>
             <p style="color: #374151; font-size: 16px; line-height: 1.6;">Hi there!</p>
             
@@ -96,8 +94,7 @@ class MailgunMailer:
                 <p style="color: #6B7280; font-size: 14px; margin-bottom: 5px;">Need help? Contact us at <a href="mailto:support@aup.events" style="color: #4F46E5; text-decoration: none;">support@aup.events</a></p>
                 
                 <p style="color: #9CA3AF; font-size: 12px; margin-top: 20px;">
-                    © {datetime.now().year} AUP Events. All rights reserved.<br>
-                    Amity University, Sector 125, Noida, Uttar Pradesh 201313
+                    © {datetime.now().year} Harsh Bansal. All rights reserved.
                 </p>
             </div>
         </div>
