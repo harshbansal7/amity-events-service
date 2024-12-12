@@ -4,15 +4,22 @@ import json
 from dateutil.parser import parse
 import pandas as pd
 from io import BytesIO
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter, landscape
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.colors import HexColor
-from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+from fpdf import FPDF
 import xlsxwriter
 from app.models.user import User  # Import here to avoid circular imports
 from app.models.external_participant import ExternalParticipant
+
+class PDF(FPDF):
+    def header(self):
+        # Transparent
+        self.set_fill_color(215, 183, 255)  # Indigo with 10% opacity
+        self.rect(0, 0, self.w, 50, 'F')
+
+    def footer(self):
+        self.set_y(-15)
+        self.set_font('Arial', 'I', 8)
+        self.set_text_color(128, 128, 128)
+        self.cell(0, 10, f'Page {self.page_no()}/{{nb}}', align='C')
 
 class Event:
     def __init__(self, mongo):
@@ -302,7 +309,6 @@ class Event:
         return participants
 
     def generate_pdf_report(self, event_id, fields_printed=None):
-        """Generate PDF report of participants with selected fields"""
         participants = self.get_event_participants(event_id)
         if not participants:
             return None
@@ -319,155 +325,129 @@ class Event:
             'attendance': 'Attendance Status'
         }
         
-        # Parse fields_printed from comma-separated string
         selected_fields = fields_printed.split(',') if fields_printed else list(all_fields.keys())
-        
-        # Always include enrollment_number if not already included
         if 'enrollment_number' not in selected_fields:
             selected_fields.insert(0, 'enrollment_number')
         
-        buffer = BytesIO()
-        doc = SimpleDocTemplate(
-            buffer, 
-            pagesize=letter, 
-            rightMargin=30,
-            leftMargin=30,
-            topMargin=20,
-            bottomMargin=20,
-            pagesize=landscape(letter)
-        )
-        
-        elements = []
+        # Create PDF object
+        pdf = PDF('L', 'mm', 'A4')
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.add_page()
+        # Get event details
         event = self.get_event_by_id(event_id)
         
-        # Create custom styles
-        styles = getSampleStyleSheet()
-        title_style = ParagraphStyle(
-            'CustomTitle',
-            parent=styles['Heading1'],
-            fontSize=24,
-            textColor=HexColor('#4F46E5'),  # Indigo-600
-            spaceAfter=10,
-            alignment=TA_CENTER
-        )
-        
-        subtitle_style = ParagraphStyle(
-            'CustomSubtitle',
-            parent=styles['Normal'],
-            fontSize=12,
-            textColor=HexColor('#6B7280'),  # Gray-500
-            alignment=TA_CENTER,
-            spaceAfter=20
-        )
-        
-        info_style = ParagraphStyle(
-            'EventInfo',
-            parent=styles['Normal'],
-            fontSize=10,
-            textColor=HexColor('#374151'),  # Gray-700
-            spaceAfter=5
-        )
-        
-        # Add event header
-        elements.append(Paragraph(event['name'], title_style))
+        # Event Title
+        pdf.set_font('Arial', 'B', 24)
+        pdf.set_text_color(79, 70, 229)  # Indigo-600
+        pdf.cell(0, 15, event['name'], align='C', ln=True)
         
         # Format date
-        event_date = datetime.strptime(event['date'], "%Y-%m-%dT%H:%M:%S") if isinstance(event['date'], str) else event['date']
+        if isinstance(event['date'], str):
+            try:
+                event_date = datetime.strptime(event['date'], "%Y-%m-%dT%H:%M:%S.%f")
+            except ValueError:
+                try:
+                    event_date = datetime.strptime(event['date'], "%Y-%m-%dT%H:%M:%S")
+                except ValueError:
+                    event_date = datetime.now()  # fallback
+        else:
+            event_date = event['date']
+            
         formatted_date = event_date.strftime("%B %d, %Y at %I:%M %p")
         
-        # Create info table
-        info_data = [
-            [
-                Paragraph(f"<b>Date & Time:</b><br/>{formatted_date}", info_style),
-                Paragraph(f"<b>Venue:</b><br/>{event['venue']}", info_style),
-                Paragraph(f"<b>Participants:</b><br/>{len(participants)} / {event['max_participants']}", info_style)
-            ]
-        ]
+        # Event Info Box
+        pdf.set_fill_color(243, 244, 246)  # Gray-100
+        pdf.set_draw_color(229, 231, 235)  # Gray-200
         
-        info_table = Table(
-            info_data,
-            colWidths=[landscape(letter)[0]/3 - 40]*3,
-            style=TableStyle([
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                ('BACKGROUND', (0, 0), (-1, -1), HexColor('#F3F4F6')),  # Gray-100
-                ('ROUNDEDCORNERS', [10, 10, 10, 10]),
-                ('BOX', (0, 0), (-1, -1), 1, HexColor('#E5E7EB')),  # Gray-200
-                ('TOPPADDING', (0, 0), (-1, -1), 15),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 15),
-            ])
-        )
+        info_box_y = pdf.get_y() + 5
+        info_box_height = 25
+        pdf.rect(15, info_box_y, pdf.w - 30, info_box_height, 'DF')
         
-        elements.append(info_table)
-        elements.append(Spacer(1, 30))
+        # Info text
+        pdf.set_font('Arial', '', 10)
+        pdf.set_text_color(55, 65, 81)  # Gray-700
         
-        # Add participants section header
-        participants_header = ParagraphStyle(
-            'ParticipantsHeader',
-            parent=styles['Normal'],
-            fontSize=14,
-            textColor=HexColor('#1F2937'),  # Gray-800
-            spaceAfter=15
-        )
-        elements.append(Paragraph("Participants List", participants_header))
+        # Calculate widths for three columns
+        col_width = (pdf.w - 30) / 3
         
-        # Prepare data for table
-        headers = [all_fields[field] for field in selected_fields]
-        data = [headers]
+        pdf.set_xy(15, info_box_y + 5)
+        pdf.set_font('Arial', 'B', 10)
+        pdf.cell(col_width, 5, 'Date & Time:', align='C')
+        pdf.set_font('Arial', '', 10)
+        pdf.set_xy(15, info_box_y + 12)
+        pdf.cell(col_width, 5, formatted_date, align='C')
         
-        for participant in participants:
-            row = []
-            for field in selected_fields:
+        pdf.set_xy(15 + col_width, info_box_y + 5)
+        pdf.set_font('Arial', 'B', 10)
+        pdf.cell(col_width, 5, 'Venue:', align='C')
+        pdf.set_font('Arial', '', 10)
+        pdf.set_xy(15 + col_width, info_box_y + 12)
+        pdf.cell(col_width, 5, event['venue'], align='C')
+        
+        pdf.set_xy(15 + 2 * col_width, info_box_y + 5)
+        pdf.set_font('Arial', 'B', 10)
+        pdf.cell(col_width, 5, 'Participants:', align='C')
+        pdf.set_font('Arial', '', 10)
+        pdf.set_xy(15 + 2 * col_width, info_box_y + 12)
+        pdf.cell(col_width, 5, f"{len(participants)} / {event['max_participants']}", align='C')
+        
+        # Participants List Header
+        pdf.ln(35)
+        pdf.set_font('Arial', 'B', 14)
+        pdf.set_text_color(31, 41, 55)  # Gray-800
+        pdf.cell(0, 10, 'Participants List', ln=True)
+        
+        # Table headers
+        pdf.set_fill_color(249, 250, 251)  # Gray-50
+        pdf.set_font('Arial', 'B', 10)
+        
+        # Calculate column widths
+        col_widths = []
+        total_width = pdf.w - 30
+        
+        for field in selected_fields:
+            if field == 'enrollment_number':
+                col_widths.append(total_width * 0.15)
+            elif field == 'name':
+                col_widths.append(total_width * 0.2)
+            elif field == 'amity_email':
+                col_widths.append(total_width * 0.25)
+            else:
+                col_widths.append(total_width * 0.15)
+        
+        # Draw headers
+        pdf.set_x(15)
+        for i, field in enumerate(selected_fields):
+            pdf.cell(col_widths[i], 10, all_fields[field], 1, 0, 'L', True)
+        pdf.ln()
+        
+        # Table data
+        pdf.set_font('Arial', '', 10)
+        pdf.set_fill_color(255, 255, 255)  # White
+        
+        for i, participant in enumerate(participants):
+            if pdf.get_y() + 10 > pdf.page_break_trigger:
+                pdf.add_page()
+                # Redraw headers on new page
+                pdf.set_font('Arial', 'B', 10)
+                pdf.set_x(15)
+                for j, field in enumerate(selected_fields):
+                    pdf.cell(col_widths[j], 10, all_fields[field], 1, 0, 'L', True)
+                pdf.ln()
+                pdf.set_font('Arial', '', 10)
+            
+            pdf.set_x(15)
+            for j, field in enumerate(selected_fields):
                 value = participant[field]
                 if field == 'registered_at':
                     value = value.strftime("%d/%m/%Y %I:%M %p")
                 elif field == 'attendance':
                     value = 'Present' if value else 'Absent'
-                row.append(value)
-            data.append(row)
+                pdf.cell(col_widths[j], 10, str(value), 1, 0, 'L', i % 2 == 0)
+            pdf.ln()
         
-        # Calculate column widths based on content
-        available_width = landscape(letter)[0] - 60  # Total width minus margins
-        col_widths = [available_width / len(headers)] * len(headers)
-        
-        # Adjust specific column widths if needed
-        if 'enrollment_number' in selected_fields:
-            idx = selected_fields.index('enrollment_number')
-            col_widths[idx] = available_width * 0.15
-        if 'name' in selected_fields:
-            idx = selected_fields.index('name')
-            col_widths[idx] = available_width * 0.2
-        if 'amity_email' in selected_fields:
-            idx = selected_fields.index('amity_email')
-            col_widths[idx] = available_width * 0.25
-
-        # Create table
-        table = Table(data, colWidths=col_widths)
-        
-        # Style the table
-        table.setStyle(TableStyle([
-            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),  # Headers
-            ('FONTSIZE', (0, 0), (-1, 0), 10),    # Header font size
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 15),
-            ('TOPPADDING', (0, 0), (-1, 0), 15),
-            ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
-            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 1), (-1, -1), 10),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('WORDWRAP', (0, 0), (-1, -1), True),
-            ('LEFTPADDING', (0, 0), (-1, -1), 10),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 10),
-            ('TOPPADDING', (0, 0), (-1, -1), 8),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.white),
-            ('ROWBACKGROUNDS', (0, 0), (-1, -1), [colors.white, colors.lightgrey])
-        ]))
-        
-        elements.append(table)
-        doc.build(elements)
-        
+        buffer = BytesIO()
+        pdf.output(buffer)
         buffer.seek(0)
         return buffer
 

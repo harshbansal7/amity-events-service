@@ -28,7 +28,7 @@ def create_app():
 
     # Configure CORS
     CORS(app, 
-        resources={r"/api/*": {"origins": ["https://www.aup.events", "https://aup.events"]}},
+        resources={r"/api/*": {"origins": ["http://localhost:3000", "https://www.aup.events", "https://aup.events"]}},
         supports_credentials=True,
         allow_headers=["Content-Type", "Authorization"],
         methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
