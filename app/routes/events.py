@@ -27,8 +27,9 @@ def init_event_routes(mongo):
             
             # Check required fields
             required_fields = ['name', 'date', 'max_participants', 'venue']
-            if not all(field in data and data[field] != '' for field in required_fields):
-                return jsonify({'message': 'Missing required fields'}), 400
+            missing_fields = [field for field in required_fields if field not in data or data[field] == '']
+            if missing_fields:
+                return jsonify({'message': f'Missing required fields: {", ".join(missing_fields)}'}), 400
 
             # Convert boolean fields
             data['allow_external'] = data.get('allow_external', 'false').lower() == 'true'

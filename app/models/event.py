@@ -5,8 +5,11 @@ from dateutil.parser import parse
 import pandas as pd
 from io import BytesIO
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
+from reportlab.lib.pagesizes import letter, landscape
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.colors import HexColor
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 import xlsxwriter
 from app.models.user import User  # Import here to avoid circular imports
 from app.models.external_participant import ExternalParticipant
@@ -303,7 +306,7 @@ class Event:
         participants = self.get_event_participants(event_id)
         if not participants:
             return None
-
+        
         # Define all possible fields and their display names
         all_fields = {
             'name': 'Name',
@@ -324,16 +327,96 @@ class Event:
             selected_fields.insert(0, 'enrollment_number')
         
         buffer = BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=30, leftMargin=30)
+        doc = SimpleDocTemplate(
+            buffer, 
+            pagesize=letter, 
+            rightMargin=30,
+            leftMargin=30,
+            topMargin=20,
+            bottomMargin=20,
+            pagesize=landscape(letter)
+        )
+        
         elements = []
+        event = self.get_event_by_id(event_id)
         
-        # Create headers based on selected fields
-        headers = ['No.'] + [all_fields[field] for field in selected_fields]
+        # Create custom styles
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=24,
+            textColor=HexColor('#4F46E5'),  # Indigo-600
+            spaceAfter=10,
+            alignment=TA_CENTER
+        )
         
-        # Create table data
+        subtitle_style = ParagraphStyle(
+            'CustomSubtitle',
+            parent=styles['Normal'],
+            fontSize=12,
+            textColor=HexColor('#6B7280'),  # Gray-500
+            alignment=TA_CENTER,
+            spaceAfter=20
+        )
+        
+        info_style = ParagraphStyle(
+            'EventInfo',
+            parent=styles['Normal'],
+            fontSize=10,
+            textColor=HexColor('#374151'),  # Gray-700
+            spaceAfter=5
+        )
+        
+        # Add event header
+        elements.append(Paragraph(event['name'], title_style))
+        
+        # Format date
+        event_date = datetime.strptime(event['date'], "%Y-%m-%dT%H:%M:%S") if isinstance(event['date'], str) else event['date']
+        formatted_date = event_date.strftime("%B %d, %Y at %I:%M %p")
+        
+        # Create info table
+        info_data = [
+            [
+                Paragraph(f"<b>Date & Time:</b><br/>{formatted_date}", info_style),
+                Paragraph(f"<b>Venue:</b><br/>{event['venue']}", info_style),
+                Paragraph(f"<b>Participants:</b><br/>{len(participants)} / {event['max_participants']}", info_style)
+            ]
+        ]
+        
+        info_table = Table(
+            info_data,
+            colWidths=[landscape(letter)[0]/3 - 40]*3,
+            style=TableStyle([
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('BACKGROUND', (0, 0), (-1, -1), HexColor('#F3F4F6')),  # Gray-100
+                ('ROUNDEDCORNERS', [10, 10, 10, 10]),
+                ('BOX', (0, 0), (-1, -1), 1, HexColor('#E5E7EB')),  # Gray-200
+                ('TOPPADDING', (0, 0), (-1, -1), 15),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 15),
+            ])
+        )
+        
+        elements.append(info_table)
+        elements.append(Spacer(1, 30))
+        
+        # Add participants section header
+        participants_header = ParagraphStyle(
+            'ParticipantsHeader',
+            parent=styles['Normal'],
+            fontSize=14,
+            textColor=HexColor('#1F2937'),  # Gray-800
+            spaceAfter=15
+        )
+        elements.append(Paragraph("Participants List", participants_header))
+        
+        # Prepare data for table
+        headers = [all_fields[field] for field in selected_fields]
         data = [headers]
-        for idx, participant in enumerate(participants, 1):
-            row = [idx]
+        
+        for participant in participants:
+            row = []
             for field in selected_fields:
                 value = participant[field]
                 if field == 'registered_at':
@@ -344,49 +427,40 @@ class Event:
             data.append(row)
         
         # Calculate column widths based on content
-        available_width = 535  # Adjusted for margins
-        num_columns = len(headers)
-        col_widths = [25]  # Smaller width for No. column
+        available_width = landscape(letter)[0] - 60  # Total width minus margins
+        col_widths = [available_width / len(headers)] * len(headers)
         
-        # Distribute remaining width based on content type with adjusted percentages
-        field_widths = {
-            'name': 0.18,  # Increased for longer names
-            'enrollment_number': 0.15,
-            'amity_email': 0.20,  # Increased for longer email addresses
-            'phone_number': 0.12,
-            'branch': 0.08,  # Reduced as usually shorter
-            'year': 0.05,   # Reduced as just a number
-            'registered_at': 0.15,  # Increased for date format
-            'attendance': 0.07  # Add width for attendance column
-        }
-        
-        remaining_width = available_width - 25
-        for field in selected_fields:
-            col_widths.append(remaining_width * field_widths[field])
-        
-        # Create table with calculated widths
+        # Adjust specific column widths if needed
+        if 'enrollment_number' in selected_fields:
+            idx = selected_fields.index('enrollment_number')
+            col_widths[idx] = available_width * 0.15
+        if 'name' in selected_fields:
+            idx = selected_fields.index('name')
+            col_widths[idx] = available_width * 0.2
+        if 'amity_email' in selected_fields:
+            idx = selected_fields.index('amity_email')
+            col_widths[idx] = available_width * 0.25
+
+        # Create table
         table = Table(data, colWidths=col_widths)
+        
+        # Style the table
         table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (0, -1), 'CENTER'),  # No. column centered
-            ('ALIGN', (1, 0), (1, -1), 'LEFT'),    # Name left-aligned
-            ('ALIGN', (2, 0), (2, -1), 'LEFT'),    # Enrollment left-aligned
-            ('ALIGN', (3, 0), (3, -1), 'LEFT'),    # Email left-aligned
-            ('ALIGN', (4, 0), (-1, -1), 'CENTER'), # Rest centered
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 12),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),  # Headers
+            ('FONTSIZE', (0, 0), (-1, 0), 10),    # Header font size
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 15),
+            ('TOPPADDING', (0, 0), (-1, 0), 15),
             ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
             ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 1), (-1, -1), 9),     # Slightly smaller font
+            ('FONTSIZE', (0, 1), (-1, -1), 10),
             ('GRID', (0, 0), (-1, -1), 1, colors.black),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('WORDWRAP', (0, 0), (-1, -1), True),
-            ('LEFTPADDING', (0, 0), (-1, -1), 6),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 6),
-            ('TOPPADDING', (0, 0), (-1, -1), 5),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+            ('LEFTPADDING', (0, 0), (-1, -1), 10),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
             ('BACKGROUND', (0, 1), (-1, -1), colors.white),
             ('ROWBACKGROUNDS', (0, 0), (-1, -1), [colors.white, colors.lightgrey])
         ]))
