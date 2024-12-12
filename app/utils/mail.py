@@ -19,23 +19,21 @@ class MailgunMailer:
                 "to": [to_email],
                 "h:Reply-To": "support@aup.events",
                 "h:X-Mailgun-Variables": '{"category": "user-notification"}',
-                "h:List-Unsubscribe": f"<mailto:unsubscribe@{self.domain}>",
-                "subject": subject
-            }
+                "subject": subject,
+                "h:List-Unsubscribe": "<mailto:unsubscribe@aup.events>",
+                "h:X-Priority": "3",
+                "h:X-MSMail-Priority": "Normal",
+                "h:X-Mailer": "Mailgun API",
+                "o:tag": ["otp", "user-notification"],
+                "o:tracking": True,
+                "o:tracking-clicks": "htmlonly",
+                "o:tracking-opens": True,
+            }   
 
             if text:
                 data["text"] = text
             if html:
                 data["html"] = html
-
-            headers = {
-                "h:X-Mailgun-Track": "yes",
-                "h:X-Mailgun-Track-Clicks": "yes",
-                "h:X-Mailgun-Track-Opens": "yes",
-                "h:X-Mailgun-Dkim": "yes",
-                "h:X-Mailgun-SPF": "yes"
-            }
-            data.update(headers)
 
             response = requests.post(
                 f"{self.base_url}/messages",
