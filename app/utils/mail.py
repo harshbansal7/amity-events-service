@@ -1,5 +1,6 @@
 import requests
 from config import Config
+from datetime import datetime
 
 class MailgunMailer:
     def __init__(self):
@@ -14,8 +15,11 @@ class MailgunMailer:
         """
         try:
             data = {
-                "from": f"Amity Events <{self.from_email}>",
+                "from": f"AUP Events <{self.from_email}>",
                 "to": [to_email],
+                "h:Reply-To": "support@aup.events",
+                "h:X-Mailgun-Variables": '{"category": "user-notification"}',
+                "h:List-Unsubscribe": f"<mailto:unsubscribe@{self.domain}>",
                 "subject": subject
             }
 
@@ -23,6 +27,15 @@ class MailgunMailer:
                 data["text"] = text
             if html:
                 data["html"] = html
+
+            headers = {
+                "h:X-Mailgun-Track": "yes",
+                "h:X-Mailgun-Track-Clicks": "yes",
+                "h:X-Mailgun-Track-Opens": "yes",
+                "h:X-Mailgun-Dkim": "yes",
+                "h:X-Mailgun-SPF": "yes"
+            }
+            data.update(headers)
 
             response = requests.post(
                 f"{self.base_url}/messages",
@@ -41,29 +54,54 @@ class MailgunMailer:
         """
         Send OTP verification email
         """
-        subject = "Your OTP for Amity Events Registration"
+        subject = "Your Verification Code for AUP Events"
         
         text = f"""
-        Hello,
+        Hi there!
 
-        Your OTP for Amity Events registration is: {otp}
+        Thank you for registering with AUP Events - Your Campus Event Hub.
+        
+        Your verification code is: {otp}
 
-        This OTP will expire in 10 minutes.
+        This code will expire in 10 minutes for security purposes.
 
-        Best regards,
-        Amity Events Team
+        If you didn't request this code, please ignore this email.
+
+        Best wishes,
+        The AUP Events Team
+
+        Need help? Contact us at support@aup.events
+        
+        © {datetime.now().year} AUP Events. All rights reserved.
+        Amity University, Sector 125, Noida, Uttar Pradesh 201313
         """
 
         html = f"""
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #4F46E5;">Amity Events Registration</h2>
-            <p>Hello,</p>
-            <p>Your OTP for registration is:</p>
-            <div style="background-color: #F3F4F6; padding: 20px; text-align: center; border-radius: 8px;">
-                <h1 style="color: #4F46E5; font-size: 32px; margin: 0;">{otp}</h1>
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #ffffff;">
+            <img src="https://www.aup.events/assets/amity-logo.png" alt="AUP Events Logo" style="width: 120px; margin-bottom: 20px;">
+            <h2 style="color: #4F46E5; font-size: 24px; margin-bottom: 20px;">Welcome to AUP Events!</h2>
+            <p style="color: #374151; font-size: 16px; line-height: 1.6;">Hi there!</p>
+            
+            <p style="color: #374151; font-size: 16px; line-height: 1.6;">Thank you for registering with AUP Events - Your Campus Event Hub.</p>
+            
+            <p style="color: #374151; font-size: 16px; line-height: 1.6;">Your verification code is:</p>
+            
+            <div style="background-color: #F3F4F6; padding: 20px; text-align: center; border-radius: 12px; margin: 20px 0;">
+                <h1 style="color: #4F46E5; font-size: 36px; margin: 0; letter-spacing: 4px; font-family: monospace;">{otp}</h1>
             </div>
-            <p style="color: #6B7280; font-size: 14px;">This OTP will expire in 10 minutes.</p>
-            <p>Best regards,<br>Amity Events Team</p>
+            
+            <p style="color: #6B7280; font-size: 14px;">This code will expire in 10 minutes for security purposes.</p>
+            
+            <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #E5E7EB;">
+                <p style="color: #374151; font-size: 14px; margin-bottom: 10px;">Best wishes,<br>The AUP Events Team</p>
+                
+                <p style="color: #6B7280; font-size: 14px; margin-bottom: 5px;">Need help? Contact us at <a href="mailto:support@aup.events" style="color: #4F46E5; text-decoration: none;">support@aup.events</a></p>
+                
+                <p style="color: #9CA3AF; font-size: 12px; margin-top: 20px;">
+                    © {datetime.now().year} AUP Events. All rights reserved.<br>
+                    Amity University, Sector 125, Noida, Uttar Pradesh 201313
+                </p>
+            </div>
         </div>
         """
 
