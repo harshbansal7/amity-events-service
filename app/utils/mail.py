@@ -15,8 +15,8 @@ class MailgunMailer:
         """
         try:
             data = {
-                "from": f"Registration Team <{self.from_email}>",
-                "to": [to_email, "test-ynoeletre@srv1.mail-tester.com"],
+                "from": f"AUP Events <{self.from_email}>",
+                "to": [to_email],
                 "subject": subject,
                 "text": text,
                 "date": datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S %z"),
