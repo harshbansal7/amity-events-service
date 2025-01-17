@@ -166,13 +166,15 @@ def init_event_routes(mongo):
     @events_bp.route('/events/<event_id>/participants', methods=['GET'])
     @token_required
     def get_participants(current_user, event_id):
-        """Get list of participants for an event"""
+        """Get participants for an event"""
         
+        # Check if user is the event creator
         event = event_model.events_collection.find_one({'_id': ObjectId(event_id)})
-        if not event or event['creator_id'] != current_user:
+        if not event or str(event['creator_id']) != str(current_user):
             return jsonify({'message': 'Unauthorized access'}), 403
         
         participants = event_model.get_event_participants(event_id)
+        
         if participants is None:
             return jsonify({'message': 'Event not found'}), 404
         
@@ -185,7 +187,7 @@ def init_event_routes(mongo):
         
         # Check if user is the event creator
         event = event_model.events_collection.find_one({'_id': ObjectId(event_id)})
-        if not event or event['creator_id'] != current_user:
+        if not event or str(event['creator_id']) != str(current_user):
             return jsonify({'message': 'Unauthorized access'}), 403
         
         # Get fields to be printed from query parameters
@@ -208,7 +210,7 @@ def init_event_routes(mongo):
         
         # Check if user is the event creator
         event = event_model.events_collection.find_one({'_id': ObjectId(event_id)})
-        if not event or event['creator_id'] != current_user:
+        if not event or str(event['creator_id']) != str(current_user):
             return jsonify({'message': 'Unauthorized access'}), 403
         
         # Get fields to be printed from query parameters
