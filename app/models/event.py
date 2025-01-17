@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from bson import ObjectId, json_util
 import json
 from dateutil.parser import parse
@@ -8,6 +8,8 @@ from fpdf import FPDF
 import xlsxwriter
 from app.models.user import User  # Import here to avoid circular imports
 from app.models.external_participant import ExternalParticipant
+import random
+import string
 
 class PDF(FPDF):
     def header(self):
@@ -59,7 +61,8 @@ class Event:
             'image_url': event_data.get('image_url', None),
             'allow_external': event_data.get('allow_external', False),
             'event_code': event_code,
-            'external_participants': []
+            'external_participants': [],
+            'custom_fields': event_data.get('custom_fields', [])
         }
         minutes = int(event_data.get('duration_minutes') or 0)
         hours = int(event_data.get('duration_hours') or 0) 
@@ -103,35 +106,45 @@ class Event:
         except:
             return None
 
-    def register_participant(self, event_id, user_id):
+    def register_participant(self, event_id, enrollment_number):
         event = self.get_event_by_id(event_id)
         if not event:
-            return False, "Event not found"
-        
-        # Check if user is already registered (in either old or new format)
-        is_registered = any(
-            (isinstance(p, dict) and p['enrollment_number'] == user_id)
-            for p in event['participants']
-        )
-        
-        if is_registered:
-            return False, "Already registered"
-            
-        if len(event['participants']) >= int(event['max_participants']):
-            return False, "Event is full"
+            return False, 'Event not found'
 
-        # Add participant with registration timestamp and attendance status
-        registration = {
-            'enrollment_number': user_id,
-            'registered_at': datetime.now(),
-            'attendance': False  # Default attendance status
+        # Check if already registered
+        if any(p.get('enrollment_number', p) == enrollment_number for p in event['participants']):
+            return False, 'Already registered for this event'
+
+        # Check max participants limit
+        if len(event['participants']) >= int(event['max_participants']):
+            return False, 'Event is full'
+
+        # Get participant details
+        participant = self.user_model.get_user_by_enrollment(enrollment_number) or \
+                     self.external_participants_collection.find_one({'temp_enrollment': enrollment_number})
+        
+        if not participant:
+            return False, 'Participant not found'
+
+        # Create participant entry with custom fields
+        participant_entry = {
+            'enrollment_number': enrollment_number,
+            'name': participant.get('name', ''),
+            'amity_email': participant.get('amity_email', participant.get('email', '')),
+            'branch': participant.get('branch', ''),
+            'year': participant.get('year', ''),
+            'phone_number': participant.get('phone_number', ''),
+            'registered_at': datetime.now(timezone.utc),
+            'attendance': False,
+            'custom_field_values': {}  # Add empty custom field values
         }
 
         self.events_collection.update_one(
             {'_id': ObjectId(event_id)},
-            {'$push': {'participants': registration}}
+            {'$push': {'participants': participant_entry}}
         )
-        return True, "Successfully registered"
+
+        return True, 'Successfully registered for event'
 
     def delete_event(self, event_id, user_id):
         event = self.get_event_by_id(event_id)
