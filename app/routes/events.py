@@ -78,7 +78,9 @@ def init_event_routes(mongo):
     @events_bp.route('/events/<event_id>/register', methods=['POST'])
     @token_required
     def register_for_event(current_user, event_id, **kwargs):
-        success, message = event_model.register_participant(event_id, current_user)
+        data = request.get_json()
+        custom_field_values = json.loads(data.get('custom_field_values', '{}')) if data else {}
+        success, message = event_model.register_participant(event_id, current_user, custom_field_values)
         if success:
             return jsonify({'message': message}), 200
         return jsonify({'message': message}), 400
