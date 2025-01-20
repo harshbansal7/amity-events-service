@@ -17,7 +17,7 @@ def init_auth_routes(mongo):
     event_model = Event(mongo)
 
     def is_valid_amity_email(email):
-        return bool(re.match(r'^[a-zA-Z0-9._%+-]+@s\.amity\.edu$', email))
+        return bool(re.match(r'^[a-zA-Z0-9._%+-]+@(s|ch|pb)\.amity\.edu$', email))
 
     @auth.route('/verify-email', methods=['POST'])
     def verify_email():
