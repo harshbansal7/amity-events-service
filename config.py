@@ -19,3 +19,19 @@ class Config:
     MAILGUN_API_KEY = os.getenv('MAILGUN_API_KEY')
     MAILGUN_DOMAIN = os.getenv('MAILGUN_DOMAIN')
     MAILGUN_FROM_EMAIL = os.getenv('MAILGUN_FROM_EMAIL', 'noreply@aup.events')
+    
+    # Environment check
+    ENV = os.getenv('FLASK_ENV', 'development')
+    DEBUG = ENV == 'development'
+    
+    # Add secret key for sessions (required for CSRF)
+    SECRET_KEY = os.getenv('SECRET_KEY', 'session_key_aupevents')
+    
+    # CSRF settings
+    WTF_CSRF_ENABLED = True
+    WTF_CSRF_TIME_LIMIT = 3600  # 1 hour
+    
+    # Session settings - Adjust based on environment
+    SESSION_COOKIE_SECURE = ENV != 'development'  # Only require HTTPS in production
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = 'Lax' if ENV == 'development' else 'Strict'
