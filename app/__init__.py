@@ -5,34 +5,18 @@ from config import Config
 from app.routes.auth import init_auth_routes
 from app.routes.events import init_event_routes
 from flask_cors import CORS
-from app.utils.csrf import CSRFProtection
 import os
 
 mongo = PyMongo()
-csrf = CSRFProtection()
 
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
     
-    # Initialize extensions
-    mongo.init_app(app)
-    csrf.init_app(app)
-    
-    # Configure CORS with credentials support
-    CORS(app, 
-        resources={r"/api/*": {
-            "origins": ["http://localhost:3000", "https://www.aup.events", 
-                       "https://aup.events", "https://app.aup.events"],
-            "supports_credentials": True,
-            "allow_headers": ["Content-Type", "Authorization", "X-CSRF-Token"],
-            "expose_headers": ["X-CSRF-Token"],
-            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
-        }},
-    )
-
     # Test MongoDB connection
     try:
+        mongo.init_app(app)
+        # Verify connection
         mongo.db.command('ping')
         print("Successfully connected to MongoDB!")
     except ServerSelectionTimeoutError:
@@ -41,6 +25,15 @@ def create_app():
     # Register blueprints
     app.register_blueprint(init_auth_routes(mongo), url_prefix='/api/auth')
     app.register_blueprint(init_event_routes(mongo), url_prefix='/api')
+
+    # Configure CORS
+    CORS(app, 
+        resources={r"/api/*": {"origins": ["http://localhost:3000", "https://www.aup.events", "https://aup.events", "https://app.aup.events"]}},
+        supports_credentials=True,
+        allow_headers=["Content-Type", "Authorization"],
+        methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        expose_headers=["Content-Type", "Authorization"]
+    )
 
     @app.errorhandler(ServerSelectionTimeoutError)
     def handle_mongo_error(error):

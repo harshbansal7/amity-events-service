@@ -31,7 +31,10 @@ class Config:
     WTF_CSRF_ENABLED = True
     WTF_CSRF_TIME_LIMIT = 3600  # 1 hour
     
-    # Session settings - Adjust based on environment
-    SESSION_COOKIE_SECURE = ENV != 'development'  # Only require HTTPS in production
+    # Session configuration
+    SESSION_COOKIE_NAME = 'aup_session'
+    SESSION_COOKIE_SECURE = ENV != 'development'  # True in production
     SESSION_COOKIE_HTTPONLY = True
-    SESSION_COOKIE_SAMESITE = 'Lax' if ENV == 'development' else 'Strict'
+    SESSION_COOKIE_SAMESITE = 'Lax'  # Use 'Lax' instead of 'Strict' for better UX
+    SESSION_COOKIE_DOMAIN = '.aup.events' if ENV != 'development' else None
+    PERMANENT_SESSION_LIFETIME = 1800  # 30 minutes
