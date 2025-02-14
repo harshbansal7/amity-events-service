@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from bson import ObjectId, json_util
 import json
 from dateutil.parser import parse
@@ -8,6 +8,8 @@ from fpdf import FPDF
 import xlsxwriter
 from app.models.user import User  # Import here to avoid circular imports
 from app.models.external_participant import ExternalParticipant
+import random
+import string
 
 class PDF(FPDF):
     def header(self):
@@ -59,7 +61,8 @@ class Event:
             'image_url': event_data.get('image_url', None),
             'allow_external': event_data.get('allow_external', False),
             'event_code': event_code,
-            'external_participants': []
+            'external_participants': [],
+            'custom_fields': event_data.get('custom_fields', []).split(',')
         }
         minutes = int(event_data.get('duration_minutes') or 0)
         hours = int(event_data.get('duration_hours') or 0) 
@@ -103,35 +106,45 @@ class Event:
         except:
             return None
 
-    def register_participant(self, event_id, user_id):
+    def register_participant(self, event_id, enrollment_number, custom_field_values):
         event = self.get_event_by_id(event_id)
         if not event:
-            return False, "Event not found"
-        
-        # Check if user is already registered (in either old or new format)
-        is_registered = any(
-            (isinstance(p, dict) and p['enrollment_number'] == user_id)
-            for p in event['participants']
-        )
-        
-        if is_registered:
-            return False, "Already registered"
-            
-        if len(event['participants']) >= int(event['max_participants']):
-            return False, "Event is full"
+            return False, 'Event not found'
 
-        # Add participant with registration timestamp and attendance status
-        registration = {
-            'enrollment_number': user_id,
-            'registered_at': datetime.now(),
-            'attendance': False  # Default attendance status
+        # Check if already registered
+        if any(p.get('enrollment_number', p) == enrollment_number for p in event['participants']):
+            return False, 'Already registered for this event'
+
+        # Check max participants limit
+        if len(event['participants']) >= int(event['max_participants']):
+            return False, 'Event is full'
+
+        # Get participant details
+        participant = self.user_model.get_user_by_enrollment(enrollment_number) or \
+                     self.external_participants_collection.find_one({'temp_enrollment': enrollment_number})
+        
+        if not participant:
+            return False, 'Participant not found'
+
+        # Create participant entry with custom fields
+        participant_entry = {
+            'enrollment_number': enrollment_number,
+            'name': participant.get('name', ''),
+            'amity_email': participant.get('amity_email', participant.get('email', '')),
+            'branch': participant.get('branch', ''),
+            'year': participant.get('year', ''),
+            'phone_number': participant.get('phone_number', ''),
+            'registered_at': datetime.now(timezone.utc),
+            'attendance': False,
+            'custom_field_values': custom_field_values
         }
 
         self.events_collection.update_one(
             {'_id': ObjectId(event_id)},
-            {'$push': {'participants': registration}}
+            {'$push': {'participants': participant_entry}}
         )
-        return True, "Successfully registered"
+
+        return True, 'Successfully registered for event'
 
     def delete_event(self, event_id, user_id):
         event = self.get_event_by_id(event_id)
@@ -161,7 +174,7 @@ class Event:
         
         # Prepare update data
         update_fields = {}
-        allowed_fields = ['name', 'date', 'max_participants', 'venue', 'description', 'prizes', 'image_url']
+        allowed_fields = ['name', 'date', 'max_participants', 'venue', 'description', 'prizes', 'image_url', 'custom_fields']
         duration_fields = ['duration_days', 'duration_hours', 'duration_minutes']
 
         # Handle non-duration fields
@@ -270,10 +283,12 @@ class Event:
                 enrollment_number = participant_data
                 registered_at = datetime.now()
                 attendance = False
+                custom_field_values = {}
             else:
                 enrollment_number = participant_data['enrollment_number']
                 registered_at = participant_data['registered_at']
                 attendance = participant_data.get('attendance', False)
+                custom_field_values = participant_data.get('custom_field_values', {})
 
             # First try to get from regular users
             user = self.user_model.get_user_by_enrollment(enrollment_number)
@@ -303,12 +318,14 @@ class Event:
                     'year': user['year'],
                     'phone_number': user['phone_number'],
                     'registered_at': registered_at,
-                    'attendance': attendance
+                    'attendance': attendance,
+                    'custom_field_values': custom_field_values
                 })
 
         return participants
 
     def generate_pdf_report(self, event_id, fields_printed=None):
+        """Generate PDF report of participants with selected fields"""
         participants = self.get_event_participants(event_id)
         if not participants:
             return None
@@ -325,14 +342,23 @@ class Event:
             'attendance': 'Attendance Status'
         }
         
-        selected_fields = fields_printed.split(',') if fields_printed else list(all_fields.keys())
-        if 'enrollment_number' not in selected_fields:
-            selected_fields.insert(0, 'enrollment_number')
+        # Add custom fields to all_fields if they exist in any participant
+        custom_fields = set()
+        for participant in participants:
+            if participant.get('custom_field_values'):
+                custom_fields.update(participant['custom_field_values'].keys())
         
-        # Create PDF object
-        pdf = PDF('L', 'mm', 'A4')
-        pdf.set_auto_page_break(auto=True, margin=15)
+        for field in custom_fields:
+            all_fields[f'custom_{field}'] = field
+        
+        # Parse fields_printed from comma-separated string
+        selected_fields = fields_printed.split(',') if fields_printed else list(all_fields.keys())
+        
+        # Create PDF
+        pdf = PDF('P', 'mm', 'A4')
         pdf.add_page()
+        pdf.set_font('Arial', 'B', 16)
+        
         # Get event details
         event = self.get_event_by_id(event_id)
         
@@ -428,7 +454,7 @@ class Event:
         for i, participant in enumerate(participants):
             if pdf.get_y() + 10 > pdf.page_break_trigger:
                 pdf.add_page()
-                # Redraw headers on new page
+                # Redraw headers
                 pdf.set_font('Arial', 'B', 10)
                 pdf.set_x(15)
                 for j, field in enumerate(selected_fields):
@@ -438,11 +464,18 @@ class Event:
             
             pdf.set_x(15)
             for j, field in enumerate(selected_fields):
-                value = participant[field]
+                if field.startswith('custom_'):
+                    # Handle custom field values
+                    custom_field = field[7:]  # Remove 'custom_' prefix
+                    value = participant.get('custom_field_values', {}).get(custom_field, '-')
+                else:
+                    value = participant[field]
+                
                 if field == 'registered_at':
                     value = value.strftime("%d/%m/%Y %I:%M %p")
                 elif field == 'attendance':
                     value = 'Present' if value else 'Absent'
+                
                 pdf.cell(col_widths[j], 10, str(value), 1, 0, 'L', i % 2 == 0)
             pdf.ln()
         
@@ -469,6 +502,15 @@ class Event:
             'attendance': 'Attendance Status'
         }
         
+        # Add custom fields
+        custom_fields = set()
+        for participant in participants:
+            if participant.get('custom_field_values'):
+                custom_fields.update(participant['custom_field_values'].keys())
+        
+        for field in custom_fields:
+            all_fields[f'custom_{field}'] = field
+        
         # Parse fields_printed from comma-separated string
         selected_fields = fields_printed.split(',') if fields_printed else list(all_fields.keys())
         
@@ -489,11 +531,18 @@ class Event:
         for row, participant in enumerate(participants, 1):
             worksheet.write(row, 0, row)  # Write row number
             for col, field in enumerate(selected_fields, 1):
-                value = participant[field]
+                if field.startswith('custom_'):
+                    # Handle custom field values
+                    custom_field = field[7:]  # Remove 'custom_' prefix
+                    value = participant.get('custom_field_values', {}).get(custom_field, '-')
+                else:
+                    value = participant[field]
+                
                 if field == 'registered_at':
                     value = value.strftime("%d/%m/%Y %I:%M %p")
                 elif field == 'attendance':
                     value = 'Present' if value else 'Absent'
+                
                 worksheet.write(row, col, value)
         
         workbook.close()

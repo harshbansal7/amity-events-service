@@ -78,7 +78,9 @@ def init_event_routes(mongo):
     @events_bp.route('/events/<event_id>/register', methods=['POST'])
     @token_required
     def register_for_event(current_user, event_id, **kwargs):
-        success, message = event_model.register_participant(event_id, current_user)
+        data = request.get_json()
+        custom_field_values = json.loads(data.get('custom_field_values', '{}')) if data else {}
+        success, message = event_model.register_participant(event_id, current_user, custom_field_values)
         if success:
             return jsonify({'message': message}), 200
         return jsonify({'message': message}), 400
@@ -259,5 +261,37 @@ def init_event_routes(mongo):
         if success:
             return jsonify({'message': message}), 200
         return jsonify({'error': message}), 400
+
+    @events_bp.route('/events/<event_id>/participants', methods=['POST'])
+    @token_required
+    def update_participant_details(current_user, event_id):
+        """Update participant's custom field values"""
+        try:
+            data = request.get_json()
+            enrollment_number = data.get('enrollment_number')
+            custom_field_values = data.get('custom_field_values', {})
+
+            if not enrollment_number or not custom_field_values:
+                return jsonify({'message': 'Missing required fields'}), 400
+
+            # Update the participant's custom field values
+            result = event_model.events_collection.update_one(
+                {
+                    '_id': ObjectId(event_id),
+                    'participants.enrollment_number': enrollment_number
+                },
+                {
+                    '$set': {
+                        'participants.$.custom_field_values': custom_field_values
+                    }
+                }
+            )
+
+            if result.modified_count:
+                return jsonify({'message': 'Participant details updated successfully'}), 200
+            return jsonify({'message': 'Failed to update participant details'}), 400
+
+        except Exception as e:
+            return jsonify({'message': f'Error updating participant details: {str(e)}'}), 500
 
     return events_bp 
