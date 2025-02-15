@@ -67,13 +67,35 @@ def init_event_routes(mongo):
     @events_bp.route('/events', methods=['GET'])
     @token_required
     def get_events(current_user, **kwargs):
-        # If external participant, show all events with matching code
-        if kwargs.get('is_external'):
-            events = event_model.get_events_by_code(kwargs.get('event_code'))
-            return json.loads(json_util.dumps({'events': events})), 200
+        try:
+            # If external participant, show all events with matching code
+            if kwargs.get('is_external'):
+                events = event_model.get_events_by_code(kwargs.get('event_code'))
+                # Filter out sensitive data
+                for event in events:
+                    event['participants'] = len(event.get('participants', []))
+                return json.loads(json_util.dumps({'events': events})), 200
 
-        events = event_model.get_all_events()
-        return json.loads(json_util.dumps({'events': events})), 200
+            # Get all events
+            events = event_model.get_all_events()
+            
+            # Filter sensitive data based on whether user is creator
+            for event in events:
+                if str(event.get('creator_id')) != str(current_user):
+                    # For non-creators, only send participant count and registration status
+                    is_registered = any(
+                        p.get('enrollment_number') == current_user 
+                        for p in event.get('participants', [])
+                    )
+                    participant_count = len(event.get('participants', []))
+                    event['participants'] = participant_count
+                    event['is_registered'] = is_registered
+                # Creators see full participant data for their events
+
+            return json.loads(json_util.dumps({'events': events})), 200
+            
+        except Exception as e:
+            return jsonify({'error': f'Error fetching events: {str(e)}'}), 500
 
     @events_bp.route('/events/<event_id>/register', methods=['POST'])
     @token_required
