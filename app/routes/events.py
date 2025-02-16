@@ -8,7 +8,6 @@ from bson import json_util, ObjectId
 import json
 import os
 from datetime import datetime
-from app.utils.datadog_logger import monitor_performance
 
 events_bp = Blueprint('events', __name__)
 
@@ -67,7 +66,6 @@ def init_event_routes(mongo):
 
     @events_bp.route('/events', methods=['GET'])
     @token_required
-    @monitor_performance
     def get_events(current_user, **kwargs):
         try:
             # If external participant, show all events with matching code

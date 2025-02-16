@@ -38,10 +38,3 @@ class Config:
     SESSION_COOKIE_SAMESITE = 'Lax'  # Use 'Lax' instead of 'Strict' for better UX
     SESSION_COOKIE_DOMAIN = '.aup.events' if ENV != 'development' else None
     PERMANENT_SESSION_LIFETIME = 1800  # 30 minutes
-    
-    # Datadog Configuration
-    DATADOG_API_KEY = os.getenv('DATADOG_API_KEY')
-    DATADOG_INTAKE_URL = 'https://http-intake.logs.us5.datadoghq.com/api/v2/logs'
-    
-    # Enable/disable Datadog logging
-    ENABLE_DATADOG = os.getenv('ENABLE_DATADOG', 'true').lower() == 'true'
