@@ -7,7 +7,10 @@ from dateutil.parser import parse
 from bson import json_util, ObjectId
 import json
 import os
+from app.utils.mail import MailgunMailer
 from datetime import datetime
+
+mailer = MailgunMailer()
 
 events_bp = Blueprint('events', __name__)
 
@@ -22,6 +25,11 @@ def init_event_routes(mongo):
             return jsonify({'message': 'External participants cannot create events'}), 403
 
         try:
+            # Get creator details
+            creator = mongo.db.users.find_one({'enrollment_number': current_user})
+            if not creator:
+                return jsonify({'message': 'Creator not found'}), 404
+
             # Handle form data
             data = request.form.to_dict()
             
@@ -100,12 +108,64 @@ def init_event_routes(mongo):
     @events_bp.route('/events/<event_id>/register', methods=['POST'])
     @token_required
     def register_for_event(current_user, event_id, **kwargs):
-        data = request.get_json()
-        custom_field_values = json.loads(data.get('custom_field_values', '{}')) if data else {}
-        success, message = event_model.register_participant(event_id, current_user, custom_field_values)
-        if success:
+        try:
+            data = request.get_json()
+            custom_field_values = json.loads(data.get('custom_field_values', '{}')) if data else {}
+
+            # Get event details
+            event = event_model.get_event_by_id(event_id)
+            if not event:
+                return jsonify({'message': 'Event not found'}), 404
+            
+            # Get user details for email
+            user = mongo.db.users.find_one({'enrollment_number': current_user})
+            if not user:
+                return jsonify({'message': 'User not found'}), 404
+
+            organizer = mongo.db.users.find_one({'enrollment_number': event['creator_id']})
+            if not organizer:
+                return jsonify({'message': 'Organizer not found'}), 404
+            
+            # Register the user
+            success, message = event_model.register_participant(event_id, current_user, custom_field_values)
+            if not success:
+                return jsonify({'message': 'Registration failed'}), 500
+
+            # Format date
+            if isinstance(event['date'], str):
+                try:
+                    event_date = datetime.strptime(event['date'], "%Y-%m-%dT%H:%M:%S.%f")
+                except ValueError:
+                    try:
+                        event_date = datetime.strptime(event['date'], "%Y-%m-%dT%H:%M:%S")
+                    except ValueError:
+                        event_date = datetime.now()  # fallback
+            else:
+                event_date = event['date']
+            
+            formatted_date = event_date.strftime("%B %d, %Y at %I:%M %p")
+
+            # Send confirmation email to participant
+            mailer.send_event_registration_confirmation(
+                to_email=user['amity_email'],
+                name=user['name'],
+                event_name=event['name'],
+                event_date=formatted_date,
+                venue=event['venue'],
+                organizer_email=organizer['amity_email']  # Make sure this is stored when creating event
+            )
+
+            # Send notification email to organizer
+            mailer.send_event_registration_notification(
+                to_email=organizer['amity_email'],
+                name=user['name'],
+                event_name=event['name']
+            )
+
             return jsonify({'message': message}), 200
-        return jsonify({'message': message}), 400
+
+        except Exception as e:
+            return jsonify({'message': f'Error registering for event: {str(e)}'}), 500
 
     @events_bp.route('/events/<event_id>', methods=['DELETE'])
     @token_required

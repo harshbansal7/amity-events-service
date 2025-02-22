@@ -120,12 +120,12 @@ class MailgunMailer:
         You can use these credentials to login and view event details.
 
         Best regards,
-        Amity Events Team
+        AUP Events Team
         """
 
         html = f"""
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #4F46E5;">Amity Events Registration</h2>
+            <h2 style="color: #4F46E5;">AUP Events Registration</h2>
             <p>Hello {name},</p>
             <p>Thank you for registering for <strong>{event_name}</strong>. Here are your login credentials:</p>
             <div style="background-color: #F3F4F6; padding: 20px; border-radius: 8px; margin: 20px 0;">
@@ -138,7 +138,7 @@ class MailgunMailer:
                 Please save these credentials as they cannot be recovered later.
             </p>
             <p>You can use these credentials to login and view event details.</p>
-            <p>Best regards,<br>Amity Events Team</p>
+            <p>Best regards,<br>AUP Events Team</p>
         </div>
         """
 
@@ -146,26 +146,26 @@ class MailgunMailer:
 
     def send_password_reset_email(self, to_email, otp):
         """Send password reset email with OTP"""
-        subject = "Reset Your Amity Events Password"
+        subject = "Reset Your AUP Events Password"
         
         text = f"""
         Hello,
 
-        You have requested to reset your password for Amity Events.
+        You have requested to reset your password for AUP Events.
         Your password reset OTP is: {otp}
 
         This OTP will expire in 10 minutes.
         If you did not request this reset, please ignore this email.
 
         Best regards,
-        Amity Events Team
+        AUP Events Team
         """
 
         html = f"""
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h2 style="color: #4F46E5;">Reset Your Password</h2>
             <p>Hello,</p>
-            <p>You have requested to reset your password for Amity Events.</p>
+            <p>You have requested to reset your password for AUP Events.</p>
             <p>Your password reset OTP is:</p>
             <div style="background-color: #F3F4F6; padding: 20px; text-align: center; border-radius: 8px;">
                 <h1 style="color: #4F46E5; font-size: 32px; margin: 0;">{otp}</h1>
@@ -174,8 +174,85 @@ class MailgunMailer:
             <p style="color: #DC2626; font-size: 14px;">
                 If you did not request this reset, please ignore this email.
             </p>
-            <p>Best regards,<br>Amity Events Team</p>
+            <p>Best regards,<br>AUP Events Team</p>
         </div>
         """
 
         return self.send_email(to_email, subject, text=text, html=html) 
+    
+    def send_event_registration_confirmation(self, to_email, name, event_name, event_date, venue, organizer_email):
+        """Send a professional event registration confirmation email to the participant."""
+        subject = f"🎉 Registration Confirmed: {event_name}"
+
+        text = f"""
+        Dear {name},
+
+        We are pleased to confirm your registration for "{event_name}" on AUP Events. 
+        Your participation is now successfully recorded.
+
+        📅 Event: {event_name}
+        📆 Date: {event_date}
+        🏢 Venue: {venue}
+        
+
+        Stay tuned for further details, and feel free to reach out if you have any questions.
+        
+        Organiser: {organizer_email}
+
+        Looking forward to your participation!
+
+        Best regards,  
+        AUP Events Team
+        """
+
+        html = f"""
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
+            <h2 style="color: #4F46E5; text-align: center;">🎉 Registration Confirmed</h2>
+            <p>Dear {name},</p>
+            <p>We are delighted to confirm your registration for <strong>{event_name}</strong> on AUP Events.</p>
+            
+            <div style="background-color: #f4f4f4; padding: 10px; border-radius: 8px;">
+                <p><strong>📅 Event:</strong> {event_name}</p>
+                <p><strong>📆 Date:</strong> {event_date}</p>
+                <p><strong>🏢 Venue:</strong> {venue}</p>
+            </div>
+
+            <p>Stay tuned for more details, and if you have any questions, feel free to contact the organiser at <a href="mailto:{organizer_email}" style="color: #4F46E5;">{organizer_email}</a>.</p>
+            <p>Looking forward to your participation!</p>
+
+            <p style="margin-top: 20px;">Best regards,</p>
+            <p><strong>AUP Events Team</strong></p>
+        </div>
+        """
+
+        return self.send_email(to_email, subject, text=text, html=html)
+
+    def send_event_registration_notification(self, to_email, name, event_name):
+        """Send a notification email to the event organizer about a new registration"""
+        
+        subject = f"🎉 New Registration: {name} for {event_name}!"
+        
+        text = f"""
+        Hi there,
+
+        Great news! {name} has successfully registered for {event_name} on AUP Events.
+
+        Stay tuned for further updates and ensure a seamless experience for all attendees.
+
+        Best regards,  
+        The AUP Events Team
+        """
+
+        html = f"""
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
+            <h2 style="color: #4F46E5;">🎉 New Registration Alert!</h2>
+            <p>Hello,</p>
+            <p><strong>{name}</strong> has just registered for <strong>{event_name}</strong> on AUP Events.</p>
+            <p>Make sure to check the attendee list and stay prepared for a great event!</p>
+            <p>Best regards,<br><strong>The AUP Events Team</strong></p>
+        </div>
+        """
+
+        return self.send_email(to_email, subject, text=text, html=html)
+
+
