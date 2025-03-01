@@ -311,37 +311,100 @@ class MailgunMailer:
         Your approval token is: {token}
         
         Thank you,
-        AUP Events System
+        AUP Events
         """
         
         html = f"""
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333; padding: 20px; border: 1px solid #ddd; border-radius: 5px;">
-            <h2 style="color: #4F46E5; text-align: center;">New Event Approval Request</h2>
-            
-            <p>Hello Admin,</p>
-            
-            <p>A new event requires your approval:</p>
-            
-            <div style="background-color: #f4f4f4; padding: 15px; border-radius: 5px; margin: 20px 0;">
-                <p><strong>Event Name:</strong> {event_name}</p>
-                <p><strong>Date:</strong> {event_date}</p>
-                <p><strong>Venue:</strong> {venue}</p>
-                <p><strong>Creator:</strong> {creator_name} ({creator_email})</p>
-                <p><strong>Description:</strong></p>
-                <p style="padding: 10px; background-color: white; border-radius: 3px;">{description}</p>
-            </div>
-            
-            <div style="text-align: center; margin: 30px 0;">
-                <a href="{direct_approval_url}" style="background-color: #4F46E5; color: white; padding: 12px 25px; text-decoration: none; border-radius: 4px; font-weight: bold;">Approve Event</a>
-            </div>
-            
-            <p>If the button doesn't work, you can copy and paste this link into your browser:</p>
-            <p style="background-color: #f4f4f4; padding: 10px; border-radius: 3px; word-break: break-all;">{direct_approval_url}</p>
-            
-            <p>Your approval token is: <strong>{token}</strong></p>
-            
-            <p style="margin-top: 20px; font-size: 14px; color: #666;">Thank you,<br>AUP Events System</p>
-        </div>
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Event Approval Request</title>
+        </head>
+        <body style="margin: 0; padding: 0; background-color: #f9fafb; font-family: 'Segoe UI', Arial, sans-serif;">
+            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
+                <tr>
+                    <td align="center" style="padding: 40px 0;">
+                        <table border="0" cellpadding="0" cellspacing="0" width="600" style="border-collapse: collapse; background-color: #ffffff; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);">
+                            <!-- Header -->
+                            <tr>
+                                <td align="center" bgcolor="#4F46E5" style="padding: 30px 0; border-radius: 8px 8px 0 0;">
+                                    <h1 style="margin: 0; color: #ffffff; font-weight: 600; font-size: 24px;">Event Approval Request</h1>
+                                </td>
+                            </tr>
+                            
+                            <!-- Content -->
+                            <tr>
+                                <td style="padding: 40px 30px;">
+                                    <p style="margin: 0 0 20px; color: #374151; font-size: 16px; line-height: 1.6;">Hello Admin,</p>
+                                    
+                                    <p style="margin: 0 0 20px; color: #374151; font-size: 16px; line-height: 1.6;">A new event has been submitted and requires your approval:</p>
+                                    
+                                    <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse; background-color: #f3f4f6; border-radius: 8px; margin: 25px 0;">
+                                        <tr>
+                                            <td style="padding: 20px;">
+                                                <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
+                                                    <tr>
+                                                        <td style="padding: 8px 0; color: #374151; font-size: 15px;"><strong style="color: #111827;">Event Name:</strong> {event_name}</td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td style="padding: 8px 0; color: #374151; font-size: 15px;"><strong style="color: #111827;">Date:</strong> {event_date}</td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td style="padding: 8px 0; color: #374151; font-size: 15px;"><strong style="color: #111827;">Venue:</strong> {venue}</td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td style="padding: 8px 0; color: #374151; font-size: 15px;"><strong style="color: #111827;">Creator:</strong> {creator_name} (<a href="mailto:{creator_email}" style="color: #4F46E5; text-decoration: none;">{creator_email}</a>)</td>
+                                                    </tr>
+                                                </table>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                    
+                                    <p style="margin: 0 0 10px; color: #374151; font-size: 15px; line-height: 1.6;"><strong style="color: #111827;">Description:</strong></p>
+                                    
+                                    <div style="padding: 15px; background-color: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; margin-bottom: 25px;">
+                                        <p style="margin: 0; color: #4b5563; font-size: 15px; line-height: 1.6;">{description}</p>
+                                    </div>
+                                    
+                                    <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
+                                        <tr>
+                                            <td align="center" style="padding: 25px 0;">
+                                                <table border="0" cellpadding="0" cellspacing="0" style="border-collapse: collapse;">
+                                                    <tr>
+                                                        <td align="center" bgcolor="#4F46E5" style="border-radius: 6px;">
+                                                            <a href="{direct_approval_url}" target="_blank" style="display: inline-block; padding: 16px 36px; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none;">Approve This Event</a>
+                                                        </td>
+                                                    </tr>
+                                                </table>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                    
+                                    <p style="margin: 0 0 10px; color: #4b5563; font-size: 14px;">If the button doesn't work, you can copy and paste this link into your browser:</p>
+                                    
+                                    <div style="padding: 12px; background-color: #f3f4f6; border-radius: 6px; margin-bottom: 20px; word-break: break-all;">
+                                        <p style="margin: 0; color: #6b7280; font-size: 14px; line-height: 1.4;">{direct_approval_url}</p>
+                                    </div>
+                                    
+                                    <p style="margin: 0 0 25px; color: #4b5563; font-size: 14px;">Your approval token is: <strong style="color: #111827;">{token}</strong></p>
+                                </td>
+                            </tr>
+                            
+                            <!-- Footer -->
+                            <tr>
+                                <td style="padding: 30px; background-color: #f9fafb; border-top: 1px solid #e5e7eb; border-radius: 0 0 8px 8px; text-align: center;">
+                                    <p style="margin: 0; color: #6b7280; font-size: 14px;">Thank you, <br>AUP Events</p>
+                                    <p style="margin: 10px 0 0; color: #9ca3af; font-size: 12px;">&copy; {datetime.now().year} AUP Events | Harsh Bansal. All rights reserved.</p>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+        </body>
+        </html>
         """
         
         return self.send_email(to_email, subject, text=text, html=html)
@@ -363,31 +426,85 @@ class MailgunMailer:
         Thank you for using AUP Events!
         
         Best regards,
-        AUP Events System
+        AUP Events
         """
         
         html = f"""
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333; padding: 20px; border: 1px solid #ddd; border-radius: 5px;">
-            <h2 style="color: #4F46E5; text-align: center;">Event Pending Approval</h2>
-            
-            <div style="text-align: center; margin: 20px 0;">
-                <span style="font-size: 48px;">⏳</span>
-            </div>
-            
-            <p>Hello,</p>
-            
-            <p>Thank you for creating the event <strong>"{event_name}"</strong> scheduled for {event_date}.</p>
-            
-            <div style="background-color: #f4f4f4; padding: 15px; border-radius: 5px; margin: 20px 0;">
-                <p>Your event has been submitted and is currently <strong>awaiting admin approval</strong>. You will receive another email once your event has been reviewed.</p>
-            </div>
-            
-            <p>While waiting for approval, you can make any necessary preparations for your event.</p>
-            
-            <p>Thank you for using AUP Events!</p>
-            
-            <p style="margin-top: 20px; font-size: 14px; color: #666;">Best regards,<br>AUP Events System</p>
-        </div>
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Event Pending Approval</title>
+        </head>
+        <body style="margin: 0; padding: 0; background-color: #f9fafb; font-family: 'Segoe UI', Arial, sans-serif;">
+            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
+                <tr>
+                    <td align="center" style="padding: 40px 0;">
+                        <table border="0" cellpadding="0" cellspacing="0" width="600" style="border-collapse: collapse; background-color: #ffffff; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);">
+                            <!-- Header -->
+                            <tr>
+                                <td align="center" bgcolor="#F59E0B" style="padding: 30px 0; border-radius: 8px 8px 0 0;">
+                                    <h1 style="margin: 0; color: #ffffff; font-weight: 600; font-size: 24px;">Event Pending Approval</h1>
+                                </td>
+                            </tr>
+                            
+                            <!-- Icon -->
+                            <tr>
+                                <td align="center" style="padding: 30px 0 10px;">
+                                    <div style="width: 80px; height: 80px; border-radius: 50%; background-color: #FEF3C7; display: inline-block; text-align: center; line-height: 80px; font-size: 40px;">
+                                        ⏳
+                                    </div>
+                                </td>
+                            </tr>
+                            
+                            <!-- Content -->
+                            <tr>
+                                <td style="padding: 10px 30px 40px;">
+                                    <p style="margin: 0 0 20px; color: #374151; font-size: 16px; line-height: 1.6;">Hello,</p>
+                                    
+                                    <p style="margin: 0 0 20px; color: #374151; font-size: 16px; line-height: 1.6;">Thank you for creating the event <strong style="color: #111827;">"{event_name}"</strong> scheduled for {event_date}.</p>
+                                    
+                                    <div style="padding: 20px; background-color: #FEF3C7; border-left: 4px solid #F59E0B; border-radius: 6px; margin: 25px 0;">
+                                        <p style="margin: 0; color: #92400E; font-size: 15px; line-height: 1.6;">
+                                            Your event has been submitted and is currently <strong>awaiting admin approval</strong>. You will receive another email once your event has been reviewed.
+                                        </p>
+                                    </div>
+                                    
+                                    <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse; background-color: #f3f4f6; border-radius: 8px; margin: 25px 0;">
+                                        <tr>
+                                            <td style="padding: 20px;">
+                                                <p style="margin: 0; color: #4b5563; font-size: 15px; line-height: 1.6;">
+                                                    <strong style="color: #111827;">What happens next?</strong>
+                                                </p>
+                                                <ul style="margin: 10px 0 0; padding-left: 20px; color: #4b5563; font-size: 15px; line-height: 1.6;">
+                                                    <li>An administrator will review your event details</li>
+                                                    <li>You'll receive an email when your event is approved</li>
+                                                    <li>Once approved, your event will be visible to all users</li>
+                                                </ul>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                    
+                                    <p style="margin: 0 0 20px; color: #374151; font-size: 16px; line-height: 1.6;">While waiting for approval, you can make any necessary preparations for your event.</p>
+                                    
+                                    <p style="margin: 20px 0 0; color: #374151; font-size: 16px; line-height: 1.6;">Thank you for using AUP Events!</p>
+                                </td>
+                            </tr>
+                            
+                            <!-- Footer -->
+                            <tr>
+                                <td style="padding: 30px; background-color: #f9fafb; border-top: 1px solid #e5e7eb; border-radius: 0 0 8px 8px; text-align: center;">
+                                    <p style="margin: 0; color: #6b7280; font-size: 14px;">Best regards, <br>AUP Events</p>
+                                    <p style="margin: 10px 0 0; color: #9ca3af; font-size: 12px;">&copy; {datetime.now().year} AUP Events | Harsh Bansal. All rights reserved.</p>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+        </body>
+        </html>
         """
         
         return self.send_email(to_email, subject, text=text, html=html)
@@ -406,31 +523,90 @@ class MailgunMailer:
             Users can now see your event and register for it.
             
             Thank you,
-            AUP Events System
+            AUP Events
             """
             
             html = f"""
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333; padding: 20px; border: 1px solid #ddd; border-radius: 5px;">
-                <h2 style="color: #4F46E5; text-align: center;">Event Approved!</h2>
-                
-                <div style="text-align: center; margin: 20px 0;">
-                    <span style="font-size: 48px;">✅</span>
-                </div>
-                
-                <p>Hello,</p>
-                
-                <p>Great news! Your event <strong>"{event_name}"</strong> has been approved and is now live on AUP Events.</p>
-                
-                <p>Users can now see your event and register for it.</p>
-                
-                <p style="margin-top: 20px; font-size: 14px; color: #666;">Thank you,<br>AUP Events System</p>
-            </div>
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Event Approved</title>
+            </head>
+            <body style="margin: 0; padding: 0; background-color: #f9fafb; font-family: 'Segoe UI', Arial, sans-serif;">
+                <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
+                    <tr>
+                        <td align="center" style="padding: 40px 0;">
+                            <table border="0" cellpadding="0" cellspacing="0" width="600" style="border-collapse: collapse; background-color: #ffffff; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);">
+                                <!-- Header -->
+                                <tr>
+                                    <td align="center" bgcolor="#10B981" style="padding: 30px 0; border-radius: 8px 8px 0 0;">
+                                        <h1 style="margin: 0; color: #ffffff; font-weight: 600; font-size: 24px;">Event Approved!</h1>
+                                    </td>
+                                </tr>
+                                
+                                <!-- Icon -->
+                                <tr>
+                                    <td align="center" style="padding: 30px 0 10px;">
+                                        <div style="width: 80px; height: 80px; border-radius: 50%; background-color: #D1FAE5; display: inline-block; text-align: center; line-height: 80px; font-size: 40px;">
+                                            ✅
+                                        </div>
+                                    </td>
+                                </tr>
+                                
+                                <!-- Content -->
+                                <tr>
+                                    <td style="padding: 10px 30px 40px;">
+                                        <p style="margin: 0 0 20px; color: #374151; font-size: 16px; line-height: 1.6;">Hello,</p>
+                                        
+                                        <p style="margin: 0 0 20px; color: #374151; font-size: 16px; line-height: 1.6;">
+                                            <strong style="color: #10B981; font-size: 18px;">Great news!</strong> Your event <strong style="color: #111827;">"{event_name}"</strong> has been approved and is now live on AUP Events.
+                                        </p>
+                                        
+                                        <div style="padding: 20px; background-color: #D1FAE5; border-left: 4px solid #10B981; border-radius: 6px; margin: 25px 0;">
+                                            <p style="margin: 0; color: #065F46; font-size: 15px; line-height: 1.6;">
+                                                Users can now see your event and register for it.
+                                            </p>
+                                        </div>
+                                        
+                                        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse; background-color: #f3f4f6; border-radius: 8px; margin: 25px 0;">
+                                            <tr>
+                                                <td style="padding: 20px;">
+                                                    <p style="margin: 0; color: #4b5563; font-size: 15px; line-height: 1.6;">
+                                                        <strong style="color: #111827;">Next Steps:</strong>
+                                                    </p>
+                                                    <ul style="margin: 10px 0 0; padding-left: 20px; color: #4b5563; font-size: 15px; line-height: 1.6;">
+                                                        <li>Promote your event to potential participants</li>
+                                                        <li>Monitor your event's registration status</li>
+                                                        <li>Prepare your event materials and venue</li>
+                                                    </ul>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                        
+                                        <p style="margin: 25px 0 0; color: #374151; font-size: 16px; line-height: 1.6;">We wish you a successful event!</p>
+                                    </td>
+                                </tr>
+                                
+                                <!-- Footer -->
+                                <tr>
+                                    <td style="padding: 30px; background-color: #f9fafb; border-top: 1px solid #e5e7eb; border-radius: 0 0 8px 8px; text-align: center;">
+                                        <p style="margin: 0; color: #6b7280; font-size: 14px;">Thank you, <br>AUP Events</p>
+                                        <p style="margin: 10px 0 0; color: #9ca3af; font-size: 12px;">&copy; {datetime.now().year} AUP Events | Harsh Bansal. All rights reserved.</p>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                </table>
+            </body>
+            </html>
             """
         else:
             subject = f"❌ Event Rejected: {event_name}"
             
             reason_text = f"\nReason: {rejection_reason}" if rejection_reason else ""
-            reason_html = f"<p><strong>Reason:</strong> {rejection_reason}</p>" if rejection_reason else ""
             
             text = f"""
             Hello,
@@ -440,27 +616,92 @@ class MailgunMailer:
             If you have any questions, please contact the administrator.
             
             Thank you,
-            AUP Events System
+            AUP Events
             """
             
-            html = f"""
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333; padding: 20px; border: 1px solid #ddd; border-radius: 5px;">
-                <h2 style="color: #DC2626; text-align: center;">Event Rejected</h2>
-                
-                <div style="text-align: center; margin: 20px 0;">
-                    <span style="font-size: 48px;">❌</span>
+            # Create the reason HTML block conditionally
+            reason_html = ""
+            if rejection_reason:
+                reason_html = f"""
+                <div style="padding: 20px; background-color: #FEE2E2; border-left: 4px solid #EF4444; border-radius: 6px; margin: 25px 0;">
+                    <p style="margin: 0; color: #991B1B; font-size: 15px; line-height: 1.6;">
+                        <strong>Reason for rejection:</strong> {rejection_reason}
+                    </p>
                 </div>
-                
-                <p>Hello,</p>
-                
-                <p>We regret to inform you that your event <strong>"{event_name}"</strong> has been rejected.</p>
-                
-                {reason_html}
-                
-                <p>If you have any questions, please contact the administrator.</p>
-                
-                <p style="margin-top: 20px; font-size: 14px; color: #666;">Thank you,<br>AUP Events System</p>
-            </div>
+                """
+            
+            html = f"""
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Event Rejected</title>
+            </head>
+            <body style="margin: 0; padding: 0; background-color: #f9fafb; font-family: 'Segoe UI', Arial, sans-serif;">
+                <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
+                    <tr>
+                        <td align="center" style="padding: 40px 0;">
+                            <table border="0" cellpadding="0" cellspacing="0" width="600" style="border-collapse: collapse; background-color: #ffffff; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);">
+                                <!-- Header -->
+                                <tr>
+                                    <td align="center" bgcolor="#EF4444" style="padding: 30px 0; border-radius: 8px 8px 0 0;">
+                                        <h1 style="margin: 0; color: #ffffff; font-weight: 600; font-size: 24px;">Event Rejected</h1>
+                                    </td>
+                                </tr>
+                                
+                                <!-- Icon -->
+                                <tr>
+                                    <td align="center" style="padding: 30px 0 10px;">
+                                        <div style="width: 80px; height: 80px; border-radius: 50%; background-color: #FEE2E2; display: inline-block; text-align: center; line-height: 80px; font-size: 40px;">
+                                            ❌
+                                        </div>
+                                    </td>
+                                </tr>
+                                
+                                <!-- Content -->
+                                <tr>
+                                    <td style="padding: 10px 30px 40px;">
+                                        <p style="margin: 0 0 20px; color: #374151; font-size: 16px; line-height: 1.6;">Hello,</p>
+                                        
+                                        <p style="margin: 0 0 20px; color: #374151; font-size: 16px; line-height: 1.6;">
+                                            We regret to inform you that your event <strong style="color: #111827;">"{event_name}"</strong> has been rejected.
+                                        </p>
+                                        
+                                        {reason_html}
+                                        
+                                        <div style="padding: 20px; background-color: #f3f4f6; border-radius: 6px; margin: 25px 0;">
+                                            <p style="margin: 0; color: #4b5563; font-size: 15px; line-height: 1.6;">
+                                                <strong style="color: #111827;">What can you do now?</strong>
+                                            </p>
+                                            <ul style="margin: 10px 0 0; padding-left: 20px; color: #4b5563; font-size: 15px; line-height: 1.6;">
+                                                <li>Review the rejection reason (if provided)</li>
+                                                <li>Make necessary changes to your event</li>
+                                                <li>Submit a new event request</li>
+                                            </ul>
+                                        </div>
+                                        
+                                        <p style="margin: 0 0 20px; color: #374151; font-size: 16px; line-height: 1.6;">
+                                            If you have any questions or need clarification, please contact the administrator at <a href="mailto:harshbansal.contact@gmail.com" style="color: #3B82F6; text-decoration: none;">harshbansal.contact@gmail.com</a>.
+                                        </p>
+                                        
+                                        <p style="margin: 25px 0 0; color: #374151; font-size: 16px; line-height: 1.6;">We appreciate your understanding.</p>
+                                    </td>
+                                </tr>
+                                
+                                <!-- Footer -->
+                                <tr>
+                                    <td style="padding: 30px; background-color: #f9fafb; border-top: 1px solid #e5e7eb; border-radius: 0 0 8px 8px; text-align: center;">
+                                        <p style="margin: 0; color: #6b7280; font-size: 14px;">Thank you, <br>AUP Events</p>
+                                        <p style="margin: 10px 0 0; color: #9ca3af; font-size: 12px;">&copy; {datetime.now().year} AUP Events | Harsh Bansal. All rights reserved.</p>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                </table>
+            </body>
+            </html>
             """
         
         return self.send_email(to_email, subject, text=text, html=html)
