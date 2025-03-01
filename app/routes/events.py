@@ -191,14 +191,15 @@ def init_event_routes(mongo):
             except ValueError:
                 return jsonify({'message': 'Invalid date format'}), 400
 
-            if 'image' in request.files:
-                file = request.files['image']
-                image_url = save_image(file)
-                if image_url:
-                    data['image_url'] = image_url
-            else:
-                data['image_url'] = FAILED_FILE_URL
-            
+            if data.get('has_image_been_changed', 'false').lower() == 'true':
+                if 'image' in request.files:
+                    file = request.files['image']
+                    image_url = save_image(file)
+                    if image_url:
+                        data['image_url'] = image_url
+                else:
+                    data['image_url'] = FAILED_FILE_URL
+                
             success, message = event_model.update_event(event_id, current_user, data)
             if success:
                 return jsonify({'message': message}), 200
