@@ -254,5 +254,215 @@ class MailgunMailer:
         """
 
         return self.send_email(to_email, subject, text=text, html=html)
+        
+    def send_event_approval_request(self, to_email, event_data, creator_data, approval_url, token):
+        """Send event approval request to admin with approval link and token"""
+        event_name = event_data.get('name', 'Unnamed Event')
+        event_date = event_data.get('date', '')
+        venue = event_data.get('venue', '')
+        creator_name = creator_data.get('name', 'Unknown')
+        creator_email = creator_data.get('amity_email', 'Unknown')
+        description = event_data.get('description', 'No description provided')
+        event_id = str(event_data.get('_id', ''))
+        
+        # Format date if it's a string
+        if isinstance(event_date, str):
+            try:
+                event_date = datetime.strptime(event_date, "%Y-%m-%dT%H:%M:%S.%f")
+                event_date = event_date.strftime("%B %d, %Y at %I:%M %p")
+            except ValueError:
+                try:
+                    event_date = datetime.strptime(event_date, "%Y-%m-%dT%H:%M:%S")
+                    event_date = event_date.strftime("%B %d, %Y at %I:%M %p")
+                except ValueError:
+                    pass  # Keep as is if parsing fails
+        
+        # Create a direct API approval URL that doesn't require the frontend
+        api_base_url = getattr(Config, 'API_BASE_URL', '')
+        if not api_base_url:
+            # Extract domain from frontend URL if API URL not configured
+            frontend_url = getattr(Config, 'FRONTEND_URL', '')
+            if frontend_url and frontend_url.startswith('https://'):
+                domain = frontend_url.split('//', 1)[1].split('/', 1)[0]
+                api_base_url = f"https://api.{domain}"
+            else:
+                api_base_url = "https://api.aup.events"
+        
+        # Direct approval link that will work with the GET endpoint we created
+        direct_approval_url = f"{api_base_url}/api/admin/events/{event_id}/approve?token={token}"
+        
+        subject = f"🔔 New Event Approval Request: {event_name}"
+        
+        text = f"""
+        Hello Admin,
+        
+        A new event requires your approval:
+        
+        Event Name: {event_name}
+        Date: {event_date}
+        Venue: {venue}
+        Creator: {creator_name} ({creator_email})
+        
+        Description:
+        {description}
+        
+        To approve this event, please click here: {direct_approval_url}
+        
+        Your approval token is: {token}
+        
+        Thank you,
+        AUP Events System
+        """
+        
+        html = f"""
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333; padding: 20px; border: 1px solid #ddd; border-radius: 5px;">
+            <h2 style="color: #4F46E5; text-align: center;">New Event Approval Request</h2>
+            
+            <p>Hello Admin,</p>
+            
+            <p>A new event requires your approval:</p>
+            
+            <div style="background-color: #f4f4f4; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                <p><strong>Event Name:</strong> {event_name}</p>
+                <p><strong>Date:</strong> {event_date}</p>
+                <p><strong>Venue:</strong> {venue}</p>
+                <p><strong>Creator:</strong> {creator_name} ({creator_email})</p>
+                <p><strong>Description:</strong></p>
+                <p style="padding: 10px; background-color: white; border-radius: 3px;">{description}</p>
+            </div>
+            
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="{direct_approval_url}" style="background-color: #4F46E5; color: white; padding: 12px 25px; text-decoration: none; border-radius: 4px; font-weight: bold;">Approve Event</a>
+            </div>
+            
+            <p>If the button doesn't work, you can copy and paste this link into your browser:</p>
+            <p style="background-color: #f4f4f4; padding: 10px; border-radius: 3px; word-break: break-all;">{direct_approval_url}</p>
+            
+            <p>Your approval token is: <strong>{token}</strong></p>
+            
+            <p style="margin-top: 20px; font-size: 14px; color: #666;">Thank you,<br>AUP Events System</p>
+        </div>
+        """
+        
+        return self.send_email(to_email, subject, text=text, html=html)
+        
+    def send_event_pending_notification(self, to_email, event_name, event_date):
+        """Send notification to event creator that their event is pending approval"""
+        
+        subject = f"⏳ Event Pending Approval: {event_name}"
+        
+        text = f"""
+        Hello,
+        
+        Thank you for creating the event "{event_name}" scheduled for {event_date}.
+        
+        Your event has been submitted and is currently awaiting admin approval. You will receive another email once your event has been reviewed.
+        
+        While waiting for approval, you can make any necessary preparations for your event.
+        
+        Thank you for using AUP Events!
+        
+        Best regards,
+        AUP Events System
+        """
+        
+        html = f"""
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333; padding: 20px; border: 1px solid #ddd; border-radius: 5px;">
+            <h2 style="color: #4F46E5; text-align: center;">Event Pending Approval</h2>
+            
+            <div style="text-align: center; margin: 20px 0;">
+                <span style="font-size: 48px;">⏳</span>
+            </div>
+            
+            <p>Hello,</p>
+            
+            <p>Thank you for creating the event <strong>"{event_name}"</strong> scheduled for {event_date}.</p>
+            
+            <div style="background-color: #f4f4f4; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                <p>Your event has been submitted and is currently <strong>awaiting admin approval</strong>. You will receive another email once your event has been reviewed.</p>
+            </div>
+            
+            <p>While waiting for approval, you can make any necessary preparations for your event.</p>
+            
+            <p>Thank you for using AUP Events!</p>
+            
+            <p style="margin-top: 20px; font-size: 14px; color: #666;">Best regards,<br>AUP Events System</p>
+        </div>
+        """
+        
+        return self.send_email(to_email, subject, text=text, html=html)
+        
+    def send_event_approval_confirmation(self, to_email, event_name, is_approved, rejection_reason=None):
+        """Send notification to event creator about event approval status"""
+        
+        if is_approved:
+            subject = f"✅ Event Approved: {event_name}"
+            
+            text = f"""
+            Hello,
+            
+            Great news! Your event "{event_name}" has been approved and is now live on AUP Events.
+            
+            Users can now see your event and register for it.
+            
+            Thank you,
+            AUP Events System
+            """
+            
+            html = f"""
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333; padding: 20px; border: 1px solid #ddd; border-radius: 5px;">
+                <h2 style="color: #4F46E5; text-align: center;">Event Approved!</h2>
+                
+                <div style="text-align: center; margin: 20px 0;">
+                    <span style="font-size: 48px;">✅</span>
+                </div>
+                
+                <p>Hello,</p>
+                
+                <p>Great news! Your event <strong>"{event_name}"</strong> has been approved and is now live on AUP Events.</p>
+                
+                <p>Users can now see your event and register for it.</p>
+                
+                <p style="margin-top: 20px; font-size: 14px; color: #666;">Thank you,<br>AUP Events System</p>
+            </div>
+            """
+        else:
+            subject = f"❌ Event Rejected: {event_name}"
+            
+            reason_text = f"\nReason: {rejection_reason}" if rejection_reason else ""
+            reason_html = f"<p><strong>Reason:</strong> {rejection_reason}</p>" if rejection_reason else ""
+            
+            text = f"""
+            Hello,
+            
+            We regret to inform you that your event "{event_name}" has been rejected.{reason_text}
+            
+            If you have any questions, please contact the administrator.
+            
+            Thank you,
+            AUP Events System
+            """
+            
+            html = f"""
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333; padding: 20px; border: 1px solid #ddd; border-radius: 5px;">
+                <h2 style="color: #DC2626; text-align: center;">Event Rejected</h2>
+                
+                <div style="text-align: center; margin: 20px 0;">
+                    <span style="font-size: 48px;">❌</span>
+                </div>
+                
+                <p>Hello,</p>
+                
+                <p>We regret to inform you that your event <strong>"{event_name}"</strong> has been rejected.</p>
+                
+                {reason_html}
+                
+                <p>If you have any questions, please contact the administrator.</p>
+                
+                <p style="margin-top: 20px; font-size: 14px; color: #666;">Thank you,<br>AUP Events System</p>
+            </div>
+            """
+        
+        return self.send_email(to_email, subject, text=text, html=html)
 
 

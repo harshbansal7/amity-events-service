@@ -10,6 +10,8 @@ from app.models.user import User  # Import here to avoid circular imports
 from app.models.external_participant import ExternalParticipant
 import random
 import string
+import secrets
+from config import Config
 
 class PDF(FPDF):
     def header(self):
@@ -35,7 +37,10 @@ class Event:
             import string, random
             chars = string.ascii_uppercase + string.digits
             return ''.join(random.choices(chars, k=6))
-
+            
+        # Generate approval token - used for approving the event
+        approval_token = secrets.token_urlsafe(32)
+        
         # If using existing code, verify it exists
         if event_data.get('use_existing_code') and event_data.get('existing_event_code'):
             existing_event = self.events_collection.find_one({
@@ -47,7 +52,10 @@ class Event:
             event_code = event_data['existing_event_code']
         else:
             event_code = generate_event_code() if event_data.get('allow_external') else None
-
+            
+        # Check if kill switch is enabled (default: True)
+        require_approval = getattr(Config, 'EVENT_APPROVAL_REQUIRED', True)
+            
         event = {
             'name': event_data['name'],
             'date': event_data['date'],
@@ -62,28 +70,34 @@ class Event:
             'allow_external': event_data.get('allow_external', False),
             'event_code': event_code,
             'external_participants': [],
-            'custom_fields': event_data.get('custom_fields', []).split(',')
+            'custom_fields': event_data.get('custom_fields', []).split(','),
+            'is_approved': not require_approval,  # Auto-approved if kill switch is off
+            'approval_status': 'approved' if not require_approval else 'pending',
+            'approval_token': approval_token,
+            'approval_request_time': datetime.now(),
+            'approval_time': None if require_approval else datetime.now()
         }
+        
         minutes = int(event_data.get('duration_minutes') or 0)
         hours = int(event_data.get('duration_hours') or 0) 
         days = int(event_data.get('duration_days') or 0)
-
         # Convert all to minutes then extract days/hours/minutes
         total_minutes = minutes + (hours * 60) + (days * 24 * 60)
         days, remainder = divmod(total_minutes, 24 * 60)
         hours, minutes = divmod(remainder, 60)
-
         event['duration'] = {
             'days': days,
             'hours': hours, 
             'minutes': minutes
         }
-
+        
         result = self.events_collection.insert_one(event)
-        return result.inserted_id
+        return result.inserted_id, approval_token
 
-    def get_all_events(self):
-        events = list(self.events_collection.find())
+    def get_all_events(self, include_pending=False):
+        # If include_pending is False, only show approved events
+        filter_query = {} if include_pending else {'is_approved': True}
+        events = list(self.events_collection.find(filter_query))
         # Convert ObjectId to string for each event
         for event in events:
             event['_id'] = str(event['_id'])
@@ -92,6 +106,68 @@ class Event:
             if 'created_at' in event and not isinstance(event['created_at'], str):
                 event['created_at'] = event['created_at'].isoformat()
         return events
+    
+    def get_pending_events(self):
+        events = list(self.events_collection.find({'approval_status': 'pending'}))
+        # Convert ObjectId to string for each event
+        for event in events:
+            event['_id'] = str(event['_id'])
+            if 'date' in event and not isinstance(event['date'], str):
+                event['date'] = event['date'].isoformat()
+            if 'created_at' in event and not isinstance(event['created_at'], str):
+                event['created_at'] = event['created_at'].isoformat()
+        return events
+        
+    def approve_event(self, event_id, token):
+        """Approve an event using the approval token"""
+        event = self.events_collection.find_one({
+            '_id': ObjectId(event_id),
+            'approval_token': token,
+            'approval_status': 'pending'
+        })
+        
+        if not event:
+            return False, "Invalid token or event already approved"
+            
+        # Update the event to approved status
+        result = self.events_collection.update_one(
+            {'_id': ObjectId(event_id)},
+            {'$set': {
+                'is_approved': True,
+                'approval_status': 'approved',
+                'approval_time': datetime.now()
+            }}
+        )
+        
+        if result.modified_count:
+            return True, "Event approved successfully"
+        return False, "Failed to approve event"
+    
+    def reject_event(self, event_id, token, reason=None):
+        """Reject an event using the approval token"""
+        event = self.events_collection.find_one({
+            '_id': ObjectId(event_id),
+            'approval_token': token,
+            'approval_status': 'pending'
+        })
+        
+        if not event:
+            return False, "Invalid token or event not in pending status"
+            
+        # Update the event to rejected status
+        result = self.events_collection.update_one(
+            {'_id': ObjectId(event_id)},
+            {'$set': {
+                'is_approved': False,
+                'approval_status': 'rejected',
+                'rejection_reason': reason,
+                'approval_time': datetime.now()
+            }}
+        )
+        
+        if result.modified_count:
+            return True, "Event rejected successfully"
+        return False, "Failed to reject event"
 
     def get_event_by_id(self, event_id):
         try:
@@ -110,6 +186,10 @@ class Event:
         event = self.get_event_by_id(event_id)
         if not event:
             return False, 'Event not found'
+            
+        # Check if event is approved
+        if not event.get('is_approved', False):
+            return False, 'Event is not approved yet'
 
         # Check if already registered
         if any(p.get('enrollment_number', p) == enrollment_number for p in event['participants']):
