@@ -38,3 +38,11 @@ class Config:
     SESSION_COOKIE_SAMESITE = 'Lax'  # Use 'Lax' instead of 'Strict' for better UX
     SESSION_COOKIE_DOMAIN = '.aup.events' if ENV != 'development' else None
     PERMANENT_SESSION_LIFETIME = 1800  # 30 minutes
+    
+    # Event approval configuration
+    EVENT_APPROVAL_REQUIRED = os.getenv('EVENT_APPROVAL_REQUIRED', 'True').lower() in ('true', '1', 't')
+    ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', 'admin@example.com')
+    ADMIN_USER_ID = os.environ.get('ADMIN_USER_ID', '')
+    
+    # API base URL for direct approval links
+    API_BASE_URL = os.environ.get('API_BASE_URL', '')  
