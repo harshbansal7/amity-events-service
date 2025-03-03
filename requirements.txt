@@ -11,3 +11,5 @@ requests==2.31.0
 XlsxWriter==3.1.2
 pandas==2.2.3
 fpdf2==2.8.1
+redis
+flask_limiter

@@ -1,45 +1,47 @@
 import random
 from datetime import datetime, timedelta, timezone
-
+import json
 from config import Config
 from .mail import MailgunMailer
+from ..extensions import redis_client
 
 class OTPManager:
     def __init__(self, mongo):
-        self.mongo = mongo
-        self.collection = self.mongo.db.otps
         self.mailer = MailgunMailer()
-
+        
     def generate_otp(self):
         return ''.join([str(random.randint(0, 9)) for _ in range(6)])
 
     def save_otp(self, email, otp):
-        expiry = datetime.now(timezone.utc) + timedelta(minutes=10)
-        self.collection.insert_one({
-            'email': email,
-            'otp': otp,
-            'expiry': expiry,
-            'verified': False
-        })
+        redis_client.setex(
+            f"otp:{email}", 
+            Config.OTP_TIMEOUT,
+            json.dumps({
+                'otp': otp,
+                'verified': False,
+                'created_at': datetime.now(timezone.utc).isoformat()
+            })
+        )
 
     def verify_otp(self, email, otp):
-        otp_record = self.collection.find_one({
-            'email': email,
-            'otp': otp,
-            'expiry': {'$gt': datetime.now(timezone.utc)},
-            'verified': False
-        })
-        
-        if otp_record:
-            self.collection.update_one(
-                {'_id': otp_record['_id']},
-                {'$set': {'verified': True}}
+        otp_data = redis_client.get(f"otp:{email}")
+        if not otp_data:
+            return False
+            
+        data = json.loads(otp_data)
+        if data['otp'] == otp and not data['verified']:
+            # Mark as verified
+            data['verified'] = True
+            redis_client.setex(
+                f"otp:{email}",
+                Config.OTP_TIMEOUT,
+                json.dumps(data)
             )
             return True
         return False
 
     def send_otp_email(self, email, otp):
-        return self.mailer.send_otp_email(email, otp) 
+        return self.mailer.send_otp_email(email, otp)
     
     def send_password_reset_email(self, email, otp):
         return self.mailer.send_password_reset_email(email, otp)

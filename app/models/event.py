@@ -12,6 +12,8 @@ import random
 import string
 import secrets
 from config import Config
+from ..extensions import redis_client
+from ..utils.json_encoder import custom_dumps, custom_loads
 
 class PDF(FPDF):
     def header(self):
@@ -31,6 +33,15 @@ class Event:
         self.collection = self.mongo.db.users
         self.events_collection = self.mongo.db.events
         self.user_model = User(mongo)
+
+    def _cache_key_all_events(self, include_pending=False):
+        return f"events:all:{'with_pending' if include_pending else 'approved_only'}"
+    
+    def _cache_key_event(self, event_id):
+        return f"event:{event_id}"
+        
+    def _cache_key_participants(self, event_id):
+        return f"event:participants:{event_id}"
 
     def create_event(self, event_data, creator_id):
         def generate_event_code():
@@ -92,10 +103,23 @@ class Event:
         }
         
         result = self.events_collection.insert_one(event)
-        return result.inserted_id, approval_token
+        event_id = result.inserted_id
+        
+        # Invalidate relevant caches
+        redis_client.delete(self._cache_key_all_events(True))
+        redis_client.delete(self._cache_key_all_events(False))
+        
+        return event_id, approval_token
 
     def get_all_events(self, include_pending=False):
-        # If include_pending is False, only show approved events
+        # Try to get from cache first
+        cache_key = self._cache_key_all_events(include_pending)
+        cached_data = redis_client.get(cache_key)
+        
+        if cached_data:
+            return custom_loads(cached_data)
+            
+        # If not in cache, get from DB
         filter_query = {} if include_pending else {'is_approved': True}
         events = list(self.events_collection.find(filter_query))
         # Convert ObjectId to string for each event
@@ -105,6 +129,14 @@ class Event:
                 event['date'] = event['date'].isoformat()
             if 'created_at' in event and not isinstance(event['created_at'], str):
                 event['created_at'] = event['created_at'].isoformat()
+                
+        # Cache the results - no need to manually convert ObjectId and datetime
+        redis_client.setex(
+            cache_key,
+            Config.EVENT_CACHE_TIMEOUT,
+            custom_dumps(events)
+        )
+        
         return events
     
     def get_pending_events(self):
@@ -170,6 +202,13 @@ class Event:
         return False, "Failed to reject event"
 
     def get_event_by_id(self, event_id):
+        # Try cache first
+        cache_key = self._cache_key_event(event_id)
+        cached_data = redis_client.get(cache_key)
+        
+        if cached_data:
+            return custom_loads(cached_data)
+            
         try:
             event = self.events_collection.find_one({'_id': ObjectId(event_id)})
             if event:
@@ -178,53 +217,28 @@ class Event:
                     event['date'] = event['date'].isoformat()
                 if 'created_at' in event:
                     event['created_at'] = event['created_at'].isoformat()
+                # Cache the event
+                redis_client.setex(
+                    cache_key,
+                    Config.EVENT_CACHE_TIMEOUT,
+                    custom_dumps(event)
+                )
+                
             return event
         except:
             return None
 
     def register_participant(self, event_id, enrollment_number, custom_field_values):
-        event = self.get_event_by_id(event_id)
-        if not event:
-            return False, 'Event not found'
-            
-        # Check if event is approved
-        if not event.get('is_approved', False):
-            return False, 'Event is not approved yet'
-
-        # Check if already registered
-        if any(p.get('enrollment_number', p) == enrollment_number for p in event['participants']):
-            return False, 'Already registered for this event'
-
-        # Check max participants limit
-        if len(event['participants']) >= int(event['max_participants']):
-            return False, 'Event is full'
-
-        # Get participant details
-        participant = self.user_model.get_user_by_enrollment(enrollment_number) or \
-                     self.external_participants_collection.find_one({'temp_enrollment': enrollment_number})
+        success, message = super().register_participant(event_id, enrollment_number, custom_field_values)
         
-        if not participant:
-            return False, 'Participant not found'
-
-        # Create participant entry with custom fields
-        participant_entry = {
-            'enrollment_number': enrollment_number,
-            'name': participant.get('name', ''),
-            'amity_email': participant.get('amity_email', participant.get('email', '')),
-            'branch': participant.get('branch', ''),
-            'year': participant.get('year', ''),
-            'phone_number': participant.get('phone_number', ''),
-            'registered_at': datetime.now(timezone.utc),
-            'attendance': False,
-            'custom_field_values': custom_field_values
-        }
-
-        self.events_collection.update_one(
-            {'_id': ObjectId(event_id)},
-            {'$push': {'participants': participant_entry}}
-        )
-
-        return True, 'Successfully registered for event'
+        if success:
+            # Invalidate relevant caches
+            redis_client.delete(self._cache_key_event(event_id))
+            redis_client.delete(self._cache_key_participants(event_id))
+            redis_client.delete(self._cache_key_all_events(True))
+            redis_client.delete(self._cache_key_all_events(False))
+            
+        return success, message
 
     def delete_event(self, event_id, user_id):
         event = self.get_event_by_id(event_id)
@@ -352,6 +366,13 @@ class Event:
         return events
 
     def get_event_participants(self, event_id):
+        # Try cache first
+        cache_key = self._cache_key_participants(event_id)
+        cached_data = redis_client.get(cache_key)
+        
+        if cached_data:
+            return custom_loads(cached_data)
+            
         event = self.get_event_by_id(event_id)
         if not event:
             return []
@@ -402,6 +423,13 @@ class Event:
                     'custom_field_values': custom_field_values
                 })
 
+        # Cache the results
+        redis_client.setex(
+            cache_key,
+            Config.CACHE_TIMEOUT,
+            custom_dumps(participants)
+        )
+        
         return participants
 
     def generate_pdf_report(self, event_id, fields_printed=None):
@@ -669,6 +697,10 @@ class Event:
                     },
                     {'$set': {'participants.$.attendance': record['attendance']}}
                 )
+            # Invalidate relevant caches
+            redis_client.delete(self._cache_key_event(event_id))
+            redis_client.delete(self._cache_key_participants(event_id))
+            
             return True, "Attendance marked successfully"
         except Exception as e:
             print(f"Error marking batch attendance: {str(e)}")

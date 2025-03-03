@@ -115,7 +115,7 @@ def init_auth_routes(mongo):
                 }
             }), 200
 
-        user = user_model.get_user_by_enrollment(data['enrollment_number'])
+        user = user_model.get_user_by_enrollment(data['enrollment_number'], True)
         
         if not user:
             return jsonify({'error': 'Invalid credentials'}), 401
