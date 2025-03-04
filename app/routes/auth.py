@@ -130,6 +130,7 @@ def init_auth_routes(mongo):
         token = jwt.encode({
             'enrollment_number': user['enrollment_number'],
             'name': user['name'],
+            'email': user['amity_email'],
             'exp': datetime.now(timezone.utc) + timedelta(seconds=Config.JWT_ACCESS_TOKEN_EXPIRES)
         }, Config.JWT_SECRET_KEY)
 
