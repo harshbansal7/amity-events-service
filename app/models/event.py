@@ -56,6 +56,8 @@ class Event:
         # Check if kill switch is enabled (default: True)
         require_approval = getattr(Config, 'EVENT_APPROVAL_REQUIRED', True)
             
+        custom_fields = event_data.get('custom_fields', '').split(',') if event_data.get('custom_fields') else []
+
         event = {
             'name': event_data['name'],
             'date': event_data['date'],
@@ -70,7 +72,7 @@ class Event:
             'allow_external': event_data.get('allow_external', False),
             'event_code': event_code,
             'external_participants': [],
-            'custom_fields': event_data.get('custom_fields', []).split(','),
+            'custom_fields': custom_fields,
             'is_approved': not require_approval,  # Auto-approved if kill switch is off
             'approval_status': 'approved' if not require_approval else 'pending',
             'approval_token': approval_token,
@@ -254,7 +256,7 @@ class Event:
         
         # Prepare update data
         update_fields = {}
-        allowed_fields = ['name', 'date', 'max_participants', 'venue', 'description', 'prizes', 'image_url', 'custom_fields']
+        allowed_fields = ['name', 'date', 'max_participants', 'venue', 'description', 'prizes', 'image_url', 'custom_fields', 'custom_slug']
         duration_fields = ['duration_days', 'duration_hours', 'duration_minutes']
 
         # Handle non-duration fields

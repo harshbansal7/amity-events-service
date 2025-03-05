@@ -9,6 +9,7 @@ import json
 import os
 from app.utils.mail import MailgunMailer
 from datetime import datetime
+import re
 from config import Config
 
 mailer = MailgunMailer()
@@ -16,6 +17,19 @@ events_bp = Blueprint('events', __name__)
 
 def init_event_routes(mongo):
     event_model = Event(mongo)
+    
+    # Create MongoDB collection for deeplinks if it doesn't exist
+    if 'deeplinks' not in mongo.db.list_collection_names():
+        mongo.db.create_collection('deeplinks')
+    
+    def is_valid_slug(slug):
+        """Check if slug is valid (alphanumeric, hyphens, underscores)"""
+        pattern = re.compile(r'^[a-zA-Z0-9-_]+$')
+        return bool(pattern.match(slug))
+    
+    def is_slug_available(slug):
+        """Check if slug is available (not already used)"""
+        return mongo.db.deeplinks.find_one({'slug': slug}) is None
     
     @events_bp.route('/events', methods=['POST'])
     @token_required
@@ -46,6 +60,19 @@ def init_event_routes(mongo):
             if data.get('use_existing_code') and not data.get('existing_event_code'):
                 return jsonify({'message': 'Event code is required when using existing code'}), 400
                 
+            # Handle custom slug if provided
+            custom_slug = data.get('custom_slug', '').strip()
+            if custom_slug:
+                # Validate slug format
+                if not is_valid_slug(custom_slug):
+                    return jsonify({'message': 'Custom URL must contain only letters, numbers, hyphens and underscores'}), 400
+                
+                # Check if slug is available
+                if not is_slug_available(custom_slug):
+                    custom_slug = f"{custom_slug}-{os.urandom(4).hex()}"
+                    if not is_slug_available(custom_slug):
+                        return jsonify({'message': 'Custom URL is already taken'}), 400
+            
             try:
                 parsed_date = parse(data['date'])
                 data['date'] = parsed_date.replace(tzinfo=None) + timedelta(hours=5, minutes=30)
@@ -62,6 +89,14 @@ def init_event_routes(mongo):
             
             # Create event and get approval token
             event_id, approval_token = event_model.create_event(data, current_user)
+            
+            # Save custom slug if provided
+            if custom_slug:
+                mongo.db.deeplinks.insert_one({
+                    'slug': custom_slug,
+                    'event_id': str(event_id),
+                    'created_at': datetime.now()
+                })
             
             # Check if approval is required
             require_approval = getattr(Config, 'EVENT_APPROVAL_REQUIRED', True)
@@ -89,17 +124,25 @@ def init_event_routes(mongo):
                     event_date=data['date'].strftime("%B %d, %Y at %I:%M %p") if isinstance(data['date'], datetime) else data['date']
                 )
                 
-                return jsonify({
+                response_data = {
                     'message': 'Event created successfully and pending approval. You will be notified once approved.',
                     'event_id': str(event_id),
                     'approval_status': 'pending'
-                }), 201
+                }
+                if custom_slug:
+                    response_data['custom_slug'] = custom_slug
+                
+                return jsonify(response_data), 201
             else:
-                return jsonify({
+                response_data = {
                     'message': 'Event created successfully',
                     'event_id': str(event_id),
                     'approval_status': 'approved'
-                }), 201
+                }
+                if custom_slug:
+                    response_data['custom_slug'] = custom_slug
+                
+                return jsonify(response_data), 201
                 
         except ValueError as e:
             return jsonify({'message': str(e)}), 400
@@ -330,10 +373,22 @@ def init_event_routes(mongo):
         except Exception as e:
             return jsonify({'message': f'Error rejecting event: {str(e)}'}), 500
     
-    @events_bp.route('/events/<event_id>/approval-status', methods=['GET'])
+    @events_bp.route('/events/<event_identifier>/approval-status', methods=['GET'])
     @token_required
-    def get_approval_status(current_user, event_id):
+    def get_approval_status(current_user, event_identifier):
         try:
+            # Check if event_identifier is a valid ObjectId
+            if ObjectId.is_valid(event_identifier):
+                # Directly use it as event_id
+                event_id = event_identifier
+            else:
+                # Otherwise, try to look it up as a custom slug
+                deeplink = mongo.db.deeplinks.find_one({'slug': event_identifier})
+                if not deeplink:
+                    return jsonify({'message': 'Event not found'}), 404
+                
+                event_id = deeplink['event_id']
+            
             event = event_model.get_event_by_id(event_id)
             
             if not event:
@@ -356,12 +411,25 @@ def init_event_routes(mongo):
         except Exception as e:
             return jsonify({'message': f'Error fetching approval status: {str(e)}'}), 500
 
-    @events_bp.route('/events/<event_id>/register', methods=['POST'])
+    @events_bp.route('/events/<event_identifier>/register', methods=['POST'])
     @token_required
-    def register_for_event(current_user, event_id, **kwargs):
+    def register_for_event(current_user, event_identifier, **kwargs):
         try:
             data = request.get_json()
             custom_field_values = json.loads(data.get('custom_field_values', '{}')) if data else {}
+            
+            # Check if event_identifier is a valid ObjectId
+            if ObjectId.is_valid(event_identifier):
+                # Directly use it as event_id
+                event_id = event_identifier
+            else:
+                # Otherwise, try to look it up as a custom slug
+                deeplink = mongo.db.deeplinks.find_one({'slug': event_identifier})
+                if not deeplink:
+                    return jsonify({'message': 'Event not found'}), 404
+                
+                event_id = deeplink['event_id']
+            
             # Get event details
             event = event_model.get_event_by_id(event_id)
             if not event:
@@ -371,6 +439,7 @@ def init_event_routes(mongo):
             if not event.get('is_approved', False):
                 return jsonify({'message': 'This event is pending approval and not available for registration yet'}), 403
             
+            # Get user details for email
             # Get user details for email
             user = mongo.db.users.find_one({'enrollment_number': current_user})
             if not user:
@@ -461,21 +530,50 @@ def init_event_routes(mongo):
         except Exception as e:
             return jsonify({'message': f'Error updating event: {str(e)}'}), 500
 
-    @events_bp.route('/events/<event_id>', methods=['GET'])
+    @events_bp.route('/events/<event_identifier>', methods=['GET'])
     @token_required
-    def get_event(current_user, event_id):
+    def get_event(current_user, event_identifier):
         try:
+            # Check if event_identifier is a valid ObjectId
+            if ObjectId.is_valid(event_identifier):
+                # Directly use it as event_id
+                event_id = event_identifier
+            else:
+                # Otherwise, try to look it up as a custom slug
+                deeplink = mongo.db.deeplinks.find_one({'slug': event_identifier})
+                if not deeplink:
+                    return jsonify({'message': 'Event not found'}), 404
+                
+                event_id = deeplink['event_id']
+            
             event = event_model.get_event_by_id(event_id)
             if event:
+                # If there's a custom slug for this event, include it in the response
+                deeplink = mongo.db.deeplinks.find_one({'event_id': str(event_id)})
+                if deeplink:
+                    event['custom_slug'] = deeplink['slug']
+                
                 return json.loads(json_util.dumps(event)), 200
             return jsonify({'message': 'Event not found'}), 404
         except Exception as e:
             return jsonify({'message': f'Error fetching event: {str(e)}'}), 500
 
-    @events_bp.route('/events/<event_id>/unregister', methods=['POST'])
+    @events_bp.route('/events/<event_identifier>/unregister', methods=['POST'])
     @token_required
-    def unregister_from_event(current_user, event_id, **kwargs):
+    def unregister_from_event(current_user, event_identifier, **kwargs):
         try:
+            # Check if event_identifier is a valid ObjectId
+            if ObjectId.is_valid(event_identifier):
+                # Directly use it as event_id
+                event_id = event_identifier
+            else:
+                # Otherwise, try to look it up as a custom slug
+                deeplink = mongo.db.deeplinks.find_one({'slug': event_identifier})
+                if not deeplink:
+                    return jsonify({'message': 'Event not found'}), 404
+                
+                event_id = deeplink['event_id']
+                
             success, message = event_model.unregister_participant(event_id, current_user)
             if success:
                 return jsonify({'message': message}), 200
@@ -501,102 +599,173 @@ def init_event_routes(mongo):
         except Exception as e:
             return jsonify({'message': f'Error fetching created events: {str(e)}'}), 500
 
-    @events_bp.route('/events/<event_id>/participants', methods=['GET'])
+    @events_bp.route('/events/<event_identifier>/participants', methods=['GET'])
     @token_required
-    def get_participants(current_user, event_id):
+    def get_participants(current_user, event_identifier):
         """Get participants for an event"""
-        
-        # Check if user is the event creator
-        event = event_model.events_collection.find_one({'_id': ObjectId(event_id)})
-        if not event or str(event['creator_id']) != str(current_user):
-            return jsonify({'message': 'Unauthorized access'}), 403
-        
-        participants = event_model.get_event_participants(event_id)
-        
-        if participants is None:
-            return jsonify({'message': 'Event not found'}), 404
-        
-        return jsonify(participants)
-
-    @events_bp.route('/events/<event_id>/participants/pdf', methods=['GET'])
-    @token_required
-    def download_pdf(current_user, event_id):
-        """Download participants list as PDF"""
-        
-        # Check if user is the event creator
-        event = event_model.events_collection.find_one({'_id': ObjectId(event_id)})
-        if not event or str(event['creator_id']) != str(current_user):
-            return jsonify({'message': 'Unauthorized access'}), 403
-        
-        # Get fields to be printed from query parameters
-        fields_printed = request.args.get('fields_printed')
-        
-        pdf_buffer = event_model.generate_pdf_report(event_id, fields_printed)
-        if pdf_buffer is None:
-            return jsonify({'message': 'Event not found'}), 404
-        
-        return send_file(
-            pdf_buffer,
-            download_name=f'participants_{event_id}_{datetime.now().strftime("%Y%m%d")}.pdf',
-            mimetype='application/pdf'
-        )
-
-    @events_bp.route('/events/<event_id>/participants/excel', methods=['GET'])
-    @token_required
-    def download_excel(current_user, event_id):
-        """Download participants list as Excel"""
-        
-        # Check if user is the event creator
-        event = event_model.events_collection.find_one({'_id': ObjectId(event_id)})
-        if not event or str(event['creator_id']) != str(current_user):
-            return jsonify({'message': 'Unauthorized access'}), 403
-        
-        # Get fields to be printed from query parameters
-        fields_printed = request.args.get('fields_printed')
-        
-        excel_buffer = event_model.generate_excel_report(event_id, fields_printed)
-        if excel_buffer is None:
-            return jsonify({'message': 'Event not found'}), 404
-        
-        return send_file(
-            excel_buffer,
-            download_name=f'participants_{event_id}_{datetime.now().strftime("%Y%m%d")}.xlsx',
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        )
-
-    @events_bp.route('/events/<event_id>/participants/<enrollment_number>', methods=['DELETE'])
-    @token_required
-    def unregister_participant(current_user, event_id, enrollment_number):
-        """Unregister a participant from an event"""
-        
-        # Check if user is the event creator
-        event = event_model.events_collection.find_one({'_id': ObjectId(event_id)})
-        if not event or event['creator_id'] != current_user:
-            return jsonify({'message': 'Unauthorized access'}), 403
-        
-        if event_model.unregister_participant(event_id, enrollment_number):
-            return jsonify({'message': 'Participant unregistered successfully'})
-        return jsonify({'message': 'Failed to unregister participant'}), 400
-
-    @events_bp.route('/events/<event_id>/attendance', methods=['POST'])
-    @token_required
-    def mark_attendance(current_user, event_id):
-        # Get the event
-        event = event_model.get_event_by_id(event_id)
-        if not event:
-            return jsonify({'error': 'Event not found'}), 404
+        try:
+            # Check if event_identifier is a valid ObjectId
+            if ObjectId.is_valid(event_identifier):
+                # Directly use it as event_id
+                event_id = event_identifier
+            else:
+                # Otherwise, try to look it up as a custom slug
+                deeplink = mongo.db.deeplinks.find_one({'slug': event_identifier})
+                if not deeplink:
+                    return jsonify({'message': 'Event not found'}), 404
+                
+                event_id = deeplink['event_id']
             
-        # Only event creator can mark attendance
-        if str(event['creator_id']) != str(current_user):
-            return jsonify({'error': 'Unauthorized'}), 403
+            # Check if user is the event creator
+            event = event_model.events_collection.find_one({'_id': ObjectId(event_id)})
+            if not event or str(event['creator_id']) != str(current_user):
+                return jsonify({'message': 'Unauthorized access'}), 403
+            
+            participants = event_model.get_event_participants(event_id)
+            
+            if participants is None:
+                return jsonify({'message': 'Event not found'}), 404
+            
+            return jsonify(participants)
+        except Exception as e:
+            return jsonify({'message': f'Error fetching participants: {str(e)}'}), 500
 
-        data = request.get_json()
-        attendance_data = data.get('attendance', [])
-        
-        success, message = event_model.mark_batch_attendance(event_id, attendance_data)
-        if success:
-            return jsonify({'message': message}), 200
-        return jsonify({'error': message}), 400
+    @events_bp.route('/events/<event_identifier>/participants/pdf', methods=['GET'])
+    @token_required
+    def download_pdf(current_user, event_identifier):
+        """Download participants list as PDF"""
+        try:
+            # Check if event_identifier is a valid ObjectId
+            if ObjectId.is_valid(event_identifier):
+                # Directly use it as event_id
+                event_id = event_identifier
+            else:
+                # Otherwise, try to look it up as a custom slug
+                deeplink = mongo.db.deeplinks.find_one({'slug': event_identifier})
+                if not deeplink:
+                    return jsonify({'message': 'Event not found'}), 404
+                
+                event_id = deeplink['event_id']
+            
+            # Check if user is the event creator
+            event = event_model.events_collection.find_one({'_id': ObjectId(event_id)})
+            if not event or str(event['creator_id']) != str(current_user):
+                return jsonify({'message': 'Unauthorized access'}), 403
+            
+            # Get fields to be printed from query parameters
+            fields_printed = request.args.get('fields_printed')
+            
+            pdf_buffer = event_model.generate_pdf_report(event_id, fields_printed)
+            if pdf_buffer is None:
+                return jsonify({'message': 'Event not found'}), 404
+            
+            return send_file(
+                pdf_buffer,
+                download_name=f'participants_{event_id}_{datetime.now().strftime("%Y%m%d")}.pdf',
+                mimetype='application/pdf'
+            )
+        except Exception as e:
+            return jsonify({'message': f'Error generating PDF report: {str(e)}'}), 500
+
+    @events_bp.route('/events/<event_identifier>/participants/excel', methods=['GET'])
+    @token_required
+    def download_excel(current_user, event_identifier):
+        """Download participants list as Excel"""
+        try:
+            # Check if event_identifier is a valid ObjectId
+            if ObjectId.is_valid(event_identifier):
+                # Directly use it as event_id
+                event_id = event_identifier
+            else:
+                # Otherwise, try to look it up as a custom slug
+                deeplink = mongo.db.deeplinks.find_one({'slug': event_identifier})
+                if not deeplink:
+                    return jsonify({'message': 'Event not found'}), 404
+                
+                event_id = deeplink['event_id']
+            
+            # Check if user is the event creator
+            event = event_model.events_collection.find_one({'_id': ObjectId(event_id)})
+            if not event or str(event['creator_id']) != str(current_user):
+                return jsonify({'message': 'Unauthorized access'}), 403
+            
+            # Get fields to be printed from query parameters
+            fields_printed = request.args.get('fields_printed')
+            
+            excel_buffer = event_model.generate_excel_report(event_id, fields_printed)
+            if excel_buffer is None:
+                return jsonify({'message': 'Event not found'}), 404
+            
+            return send_file(
+                excel_buffer,
+                download_name=f'participants_{event_id}_{datetime.now().strftime("%Y%m%d")}.xlsx',
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+        except Exception as e:
+            return jsonify({'message': f'Error generating Excel report: {str(e)}'}), 500
+
+    @events_bp.route('/events/<event_identifier>/participants/<enrollment_number>', methods=['DELETE'])
+    @token_required
+    def unregister_participant(current_user, event_identifier, enrollment_number):
+        """Unregister a participant from an event"""
+        try:
+            # Check if event_identifier is a valid ObjectId
+            if ObjectId.is_valid(event_identifier):
+                # Directly use it as event_id
+                event_id = event_identifier
+            else:
+                # Otherwise, try to look it up as a custom slug
+                deeplink = mongo.db.deeplinks.find_one({'slug': event_identifier})
+                if not deeplink:
+                    return jsonify({'message': 'Event not found'}), 404
+                
+                event_id = deeplink['event_id']
+            
+            # Check if user is the event creator
+            event = event_model.events_collection.find_one({'_id': ObjectId(event_id)})
+            if not event or event['creator_id'] != current_user:
+                return jsonify({'message': 'Unauthorized access'}), 403
+            
+            if event_model.unregister_participant(event_id, enrollment_number):
+                return jsonify({'message': 'Participant unregistered successfully'})
+            return jsonify({'message': 'Failed to unregister participant'}), 400
+        except Exception as e:
+            return jsonify({'message': f'Error unregistering participant: {str(e)}'}), 500
+
+    @events_bp.route('/events/<event_identifier>/attendance', methods=['POST'])
+    @token_required
+    def mark_attendance(current_user, event_identifier):
+        try:
+            # Check if event_identifier is a valid ObjectId
+            if ObjectId.is_valid(event_identifier):
+                # Directly use it as event_id
+                event_id = event_identifier
+            else:
+                # Otherwise, try to look it up as a custom slug
+                deeplink = mongo.db.deeplinks.find_one({'slug': event_identifier})
+                if not deeplink:
+                    return jsonify({'message': 'Event not found'}), 404
+                
+                event_id = deeplink['event_id']
+            
+            # Get the event
+            event = event_model.get_event_by_id(event_id)
+            if not event:
+                return jsonify({'error': 'Event not found'}), 404
+                
+            # Only event creator can mark attendance
+            if str(event['creator_id']) != str(current_user):
+                return jsonify({'error': 'Unauthorized'}), 403
+
+            data = request.get_json()
+            attendance_data = data.get('attendance', [])
+            
+            success, message = event_model.mark_batch_attendance(event_id, attendance_data)
+            if success:
+                return jsonify({'message': message}), 200
+            return jsonify({'error': message}), 400
+        except Exception as e:
+            return jsonify({'message': f'Error marking attendance: {str(e)}'}), 500
 
     @events_bp.route('/events/<event_id>/participants', methods=['POST'])
     @token_required
@@ -629,5 +798,77 @@ def init_event_routes(mongo):
 
         except Exception as e:
             return jsonify({'message': f'Error updating participant details: {str(e)}'}), 500
+
+    @events_bp.route('/events/<event_identifier>/update-slug', methods=['POST'])
+    @token_required
+    def update_event_slug(current_user, event_identifier):
+        try:
+            # Check if event_identifier is a valid ObjectId
+            if ObjectId.is_valid(event_identifier):
+                # Directly use it as event_id
+                event_id = event_identifier
+            else:
+                # Otherwise, try to look it up as a custom slug
+                deeplink = mongo.db.deeplinks.find_one({'slug': event_identifier})
+                if not deeplink:
+                    return jsonify({'message': 'Event not found'}), 404
+                
+                event_id = deeplink['event_id']
+                
+            # Check if user is the event creator
+            event = event_model.get_event_by_id(event_id)
+            if not event or str(event.get('creator_id')) != str(current_user):
+                return jsonify({'message': 'Unauthorized access'}), 403
+            
+            data = request.get_json()
+            new_slug = data.get('custom_slug', '').strip()
+            
+            # If no new slug is provided, remove any existing slug
+            if not new_slug:
+                mongo.db.deeplinks.delete_many({'event_id': str(event_id)})
+                return jsonify({'message': 'Custom URL removed successfully'}), 200
+            
+            # Validate slug format
+            if not is_valid_slug(new_slug):
+                return jsonify({'message': 'Custom URL must contain only letters, numbers, hyphens and underscores'}), 400
+            
+            # Check if slug is available (except for this event's current slug)
+            existing = mongo.db.deeplinks.find_one({'slug': new_slug})
+            if existing and existing['event_id'] != str(event_id):
+                return jsonify({'message': f'The custom URL "{new_slug}" is already taken'}), 400
+            
+            # Update or create the deeplink
+            mongo.db.deeplinks.update_one(
+                {'event_id': str(event_id)},
+                {
+                    '$set': {
+                        'slug': new_slug,
+                        'updated_at': datetime.now()
+                    }
+                },
+                upsert=True
+            )
+            
+            return jsonify({
+                'message': 'Custom URL updated successfully',
+                'custom_slug': new_slug
+            }), 200
+            
+        except Exception as e:
+            return jsonify({'message': f'Error updating custom URL: {str(e)}'}), 500
+    
+    @events_bp.route('/events/check-slug/<slug>', methods=['GET'])
+    def check_slug_availability(slug):
+        try:
+            if not is_valid_slug(slug):
+                return jsonify({'available': False, 'message': 'Invalid format'}), 200
+            
+            is_available = is_slug_available(slug)
+            return jsonify({
+                'available': is_available,
+                'message': 'Available' if is_available else 'Already taken'
+            }), 200
+        except Exception as e:
+            return jsonify({'message': f'Error checking slug availability: {str(e)}'}), 500
 
     return events_bp
