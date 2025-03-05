@@ -513,6 +513,31 @@ def init_event_routes(mongo):
             except ValueError:
                 return jsonify({'message': 'Invalid date format'}), 400
 
+            custom_slug = data.get('custom_slug', '').strip()
+            if custom_slug:
+                # Validate slug format
+                if not is_valid_slug(data['custom_slug']):
+                    return jsonify({'message': 'Custom URL must contain only letters, numbers, hyphens and underscores'}), 400
+                
+                # Check if slug is available (except for this event's current slug)
+                existing = mongo.db.deeplinks.find_one({'slug': data['custom_slug']})
+                if existing and existing['event_id'] != event_id:
+                    return jsonify({'message': f'The custom URL "{data["custom_slug"]}" is already taken'}), 400
+                
+            if custom_slug:
+                # Update or create the deeplink
+                mongo.db.deeplinks.update_one(
+                    {'event_id': event_id},
+                    {
+                        '$set': {
+                            'slug': custom_slug,
+                            'updated_at': datetime.now()
+                        }
+                    },
+                    upsert=True
+                )
+            
+
             if data.get('has_image_been_changed', 'false').lower() == 'true':
                 if 'image' in request.files:
                     file = request.files['image']
