@@ -77,7 +77,8 @@ class Event:
             'approval_status': 'approved' if not require_approval else 'pending',
             'approval_token': approval_token,
             'approval_request_time': datetime.now(),
-            'approval_time': None if require_approval else datetime.now()
+            'approval_time': None if require_approval else datetime.now(),
+            'custom_slug': event_data.get('custom_slug', None)
         }
         
         minutes = int(event_data.get('duration_minutes') or 0)
