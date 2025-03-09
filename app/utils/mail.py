@@ -2,6 +2,7 @@ import requests
 from config import Config
 from datetime import datetime, timezone
 
+
 class MailgunMailer:
     def __init__(self):
         self.api_key = Config.MAILGUN_API_KEY
@@ -36,9 +37,7 @@ class MailgunMailer:
                 data["html"] = html
 
             response = requests.post(
-                f"{self.base_url}/messages",
-                auth=("api", self.api_key),
-                data=data
+                f"{self.base_url}/messages", auth=("api", self.api_key), data=data
             )
 
             response.raise_for_status()
@@ -53,12 +52,12 @@ class MailgunMailer:
         Send OTP verification email
         """
         subject = "Your Verification Code for AUP Events"
-        
+
         text = f"""
         Hi there!
 
         Thank you for registering with AUP Events - Your Campus Event Hub.
-        
+
         Your verification code is: {otp}
 
         This code will expire in 10 minutes for security purposes.
@@ -69,7 +68,7 @@ class MailgunMailer:
         The AUP Events Team
 
         Need help? Contact us at support@aup.events
-        
+
         © {datetime.now().year} Harsh Bansal. All rights reserved.
         """
 
@@ -77,22 +76,22 @@ class MailgunMailer:
         <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #ffffff;">
             <h2 style="color: #4F46E5; font-size: 24px; margin-bottom: 20px;">Welcome to AUP Events!</h2>
             <p style="color: #374151; font-size: 16px; line-height: 1.6;">Hi there!</p>
-            
+
             <p style="color: #374151; font-size: 16px; line-height: 1.6;">Thank you for registering with AUP Events - Your Campus Event Hub.</p>
-            
+
             <p style="color: #374151; font-size: 16px; line-height: 1.6;">Your verification code is:</p>
-            
+
             <div style="background-color: #F3F4F6; padding: 20px; text-align: center; border-radius: 12px; margin: 20px 0;">
                 <h1 style="color: #4F46E5; font-size: 36px; margin: 0; letter-spacing: 4px; font-family: monospace;">{otp}</h1>
             </div>
-            
+
             <p style="color: #6B7280; font-size: 14px;">This code will expire in 10 minutes for security purposes.</p>
-            
+
             <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #E5E7EB;">
                 <p style="color: #374151; font-size: 14px; margin-bottom: 10px;">Best wishes,<br>The AUP Events Team</p>
-                
+
                 <p style="color: #6B7280; font-size: 14px; margin-bottom: 5px;">Need help? Contact us at <a href="mailto:support@aup.events" style="color: #4F46E5; text-decoration: none;">support@aup.events</a></p>
-                
+
                 <p style="color: #9CA3AF; font-size: 12px; margin-top: 20px;">
                     © {datetime.now().year} Harsh Bansal. All rights reserved.
                 </p>
@@ -107,14 +106,14 @@ class MailgunMailer:
         Send credentials to external participant
         """
         subject = f"Your Login Credentials for {event_name}"
-        
+
         text = f"""
         Hello {name},
 
         Thank you for registering for {event_name}. Here are your login credentials:
 
-        Enrollment Number: {credentials['enrollment_number']}
-        Password: {credentials['password']}
+        Enrollment Number: {credentials["enrollment_number"]}
+        Password: {credentials["password"]}
 
         Please save these credentials as they cannot be recovered later.
         You can use these credentials to login and view event details.
@@ -130,8 +129,8 @@ class MailgunMailer:
             <p>Thank you for registering for <strong>{event_name}</strong>. Here are your login credentials:</p>
             <div style="background-color: #F3F4F6; padding: 20px; border-radius: 8px; margin: 20px 0;">
                 <p style="margin: 0; font-family: monospace; font-size: 16px;">
-                    <strong>Enrollment Number:</strong> {credentials['enrollment_number']}<br>
-                    <strong>Password:</strong> {credentials['password']}
+                    <strong>Enrollment Number:</strong> {credentials["enrollment_number"]}<br>
+                    <strong>Password:</strong> {credentials["password"]}
                 </p>
             </div>
             <p style="color: #DC2626; font-weight: bold;">
@@ -147,7 +146,7 @@ class MailgunMailer:
     def send_password_reset_email(self, to_email, otp):
         """Send password reset email with OTP"""
         subject = "Reset Your AUP Events Password"
-        
+
         text = f"""
         Hello,
 
@@ -178,30 +177,32 @@ class MailgunMailer:
         </div>
         """
 
-        return self.send_email(to_email, subject, text=text, html=html) 
-    
-    def send_event_registration_confirmation(self, to_email, name, event_name, event_date, venue, organizer_email):
+        return self.send_email(to_email, subject, text=text, html=html)
+
+    def send_event_registration_confirmation(
+        self, to_email, name, event_name, event_date, venue, organizer_email
+    ):
         """Send a professional event registration confirmation email to the participant."""
         subject = f"🎉 Registration Confirmed: {event_name}"
 
         text = f"""
         Dear {name},
 
-        We are pleased to confirm your registration for "{event_name}" on AUP Events. 
+        We are pleased to confirm your registration for "{event_name}" on AUP Events.
         Your participation is now successfully recorded.
 
         📅 Event: {event_name}
         📆 Date: {event_date}
         🏢 Venue: {venue}
-        
+
 
         Stay tuned for further details, and feel free to reach out if you have any questions.
-        
+
         Organiser: {organizer_email}
 
         Looking forward to your participation!
 
-        Best regards,  
+        Best regards,
         AUP Events Team
         """
 
@@ -210,7 +211,7 @@ class MailgunMailer:
             <h2 style="color: #4F46E5; text-align: center;">🎉 Registration Confirmed</h2>
             <p>Dear {name},</p>
             <p>We are delighted to confirm your registration for <strong>{event_name}</strong> on AUP Events.</p>
-            
+
             <div style="background-color: #f4f4f4; padding: 10px; border-radius: 8px;">
                 <p><strong>📅 Event:</strong> {event_name}</p>
                 <p><strong>📆 Date:</strong> {event_date}</p>
@@ -229,9 +230,9 @@ class MailgunMailer:
 
     def send_event_registration_notification(self, to_email, name, event_name):
         """Send a notification email to the event organizer about a new registration"""
-        
+
         subject = f"🎉 New Registration: {name} for {event_name}!"
-        
+
         text = f"""
         Hi there,
 
@@ -239,7 +240,7 @@ class MailgunMailer:
 
         Stay tuned for further updates and ensure a seamless experience for all attendees.
 
-        Best regards,  
+        Best regards,
         The AUP Events Team
         """
 
@@ -254,17 +255,19 @@ class MailgunMailer:
         """
 
         return self.send_email(to_email, subject, text=text, html=html)
-        
-    def send_event_approval_request(self, to_email, event_data, creator_data, approval_url, token):
+
+    def send_event_approval_request(
+        self, to_email, event_data, creator_data, approval_url, token
+    ):
         """Send event approval request to admin with approval link and token"""
-        event_name = event_data.get('name', 'Unnamed Event')
-        event_date = event_data.get('date', '')
-        venue = event_data.get('venue', '')
-        creator_name = creator_data.get('name', 'Unknown')
-        creator_email = creator_data.get('amity_email', 'Unknown')
-        description = event_data.get('description', 'No description provided')
-        event_id = str(event_data.get('_id', ''))
-        
+        event_name = event_data.get("name", "Unnamed Event")
+        event_date = event_data.get("date", "")
+        venue = event_data.get("venue", "")
+        creator_name = creator_data.get("name", "Unknown")
+        creator_email = creator_data.get("amity_email", "Unknown")
+        description = event_data.get("description", "No description provided")
+        event_id = str(event_data.get("_id", ""))
+
         # Format date if it's a string
         if isinstance(event_date, str):
             try:
@@ -276,44 +279,46 @@ class MailgunMailer:
                     event_date = event_date.strftime("%B %d, %Y at %I:%M %p")
                 except ValueError:
                     pass  # Keep as is if parsing fails
-        
+
         # Create a direct API approval URL that doesn't require the frontend
-        api_base_url = getattr(Config, 'API_BASE_URL', '')
+        api_base_url = getattr(Config, "API_BASE_URL", "")
         if not api_base_url:
             # Extract domain from frontend URL if API URL not configured
-            frontend_url = getattr(Config, 'FRONTEND_URL', '')
-            if frontend_url and frontend_url.startswith('https://'):
-                domain = frontend_url.split('//', 1)[1].split('/', 1)[0]
+            frontend_url = getattr(Config, "FRONTEND_URL", "")
+            if frontend_url and frontend_url.startswith("https://"):
+                domain = frontend_url.split("//", 1)[1].split("/", 1)[0]
                 api_base_url = f"https://api.{domain}"
             else:
                 api_base_url = "https://api.aup.events"
-        
+
         # Direct approval link that will work with the GET endpoint we created
-        direct_approval_url = f"{api_base_url}/api/admin/events/{event_id}/approve?token={token}"
-        
+        direct_approval_url = (
+            f"{api_base_url}/api/admin/events/{event_id}/approve?token={token}"
+        )
+
         subject = f"🔔 New Event Approval Request: {event_name}"
-        
+
         text = f"""
         Hello Admin,
-        
+
         A new event requires your approval:
-        
+
         Event Name: {event_name}
         Date: {event_date}
         Venue: {venue}
         Creator: {creator_name} ({creator_email})
-        
+
         Description:
         {description}
-        
+
         To approve this event, please click here: {direct_approval_url}
-        
+
         Your approval token is: {token}
-        
+
         Thank you,
         AUP Events
         """
-        
+
         html = f"""
         <!DOCTYPE html>
         <html lang="en">
@@ -333,14 +338,14 @@ class MailgunMailer:
                                     <h1 style="margin: 0; color: #ffffff; font-weight: 600; font-size: 24px;">Event Approval Request</h1>
                                 </td>
                             </tr>
-                            
+
                             <!-- Content -->
                             <tr>
                                 <td style="padding: 40px 30px;">
                                     <p style="margin: 0 0 20px; color: #374151; font-size: 16px; line-height: 1.6;">Hello Admin,</p>
-                                    
+
                                     <p style="margin: 0 0 20px; color: #374151; font-size: 16px; line-height: 1.6;">A new event has been submitted and requires your approval:</p>
-                                    
+
                                     <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse; background-color: #f3f4f6; border-radius: 8px; margin: 25px 0;">
                                         <tr>
                                             <td style="padding: 20px;">
@@ -361,13 +366,13 @@ class MailgunMailer:
                                             </td>
                                         </tr>
                                     </table>
-                                    
+
                                     <p style="margin: 0 0 10px; color: #374151; font-size: 15px; line-height: 1.6;"><strong style="color: #111827;">Description:</strong></p>
-                                    
+
                                     <div style="padding: 15px; background-color: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; margin-bottom: 25px;">
                                         <p style="margin: 0; color: #4b5563; font-size: 15px; line-height: 1.6;">{description}</p>
                                     </div>
-                                    
+
                                     <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
                                         <tr>
                                             <td align="center" style="padding: 25px 0;">
@@ -381,17 +386,17 @@ class MailgunMailer:
                                             </td>
                                         </tr>
                                     </table>
-                                    
+
                                     <p style="margin: 0 0 10px; color: #4b5563; font-size: 14px;">If the button doesn't work, you can copy and paste this link into your browser:</p>
-                                    
+
                                     <div style="padding: 12px; background-color: #f3f4f6; border-radius: 6px; margin-bottom: 20px; word-break: break-all;">
                                         <p style="margin: 0; color: #6b7280; font-size: 14px; line-height: 1.4;">{direct_approval_url}</p>
                                     </div>
-                                    
+
                                     <p style="margin: 0 0 25px; color: #4b5563; font-size: 14px;">Your approval token is: <strong style="color: #111827;">{token}</strong></p>
                                 </td>
                             </tr>
-                            
+
                             <!-- Footer -->
                             <tr>
                                 <td style="padding: 30px; background-color: #f9fafb; border-top: 1px solid #e5e7eb; border-radius: 0 0 8px 8px; text-align: center;">
@@ -406,29 +411,29 @@ class MailgunMailer:
         </body>
         </html>
         """
-        
+
         return self.send_email(to_email, subject, text=text, html=html)
-        
+
     def send_event_pending_notification(self, to_email, event_name, event_date):
         """Send notification to event creator that their event is pending approval"""
-        
+
         subject = f"⏳ Event Pending Approval: {event_name}"
-        
+
         text = f"""
         Hello,
-        
+
         Thank you for creating the event "{event_name}" scheduled for {event_date}.
-        
+
         Your event has been submitted and is currently awaiting admin approval. You will receive another email once your event has been reviewed.
-        
+
         While waiting for approval, you can make any necessary preparations for your event.
-        
+
         Thank you for using AUP Events!
-        
+
         Best regards,
         AUP Events
         """
-        
+
         html = f"""
         <!DOCTYPE html>
         <html lang="en">
@@ -448,7 +453,7 @@ class MailgunMailer:
                                     <h1 style="margin: 0; color: #ffffff; font-weight: 600; font-size: 24px;">Event Pending Approval</h1>
                                 </td>
                             </tr>
-                            
+
                             <!-- Icon -->
                             <tr>
                                 <td align="center" style="padding: 30px 0 10px;">
@@ -457,20 +462,20 @@ class MailgunMailer:
                                     </div>
                                 </td>
                             </tr>
-                            
+
                             <!-- Content -->
                             <tr>
                                 <td style="padding: 10px 30px 40px;">
                                     <p style="margin: 0 0 20px; color: #374151; font-size: 16px; line-height: 1.6;">Hello,</p>
-                                    
+
                                     <p style="margin: 0 0 20px; color: #374151; font-size: 16px; line-height: 1.6;">Thank you for creating the event <strong style="color: #111827;">"{event_name}"</strong> scheduled for {event_date}.</p>
-                                    
+
                                     <div style="padding: 20px; background-color: #FEF3C7; border-left: 4px solid #F59E0B; border-radius: 6px; margin: 25px 0;">
                                         <p style="margin: 0; color: #92400E; font-size: 15px; line-height: 1.6;">
                                             Your event has been submitted and is currently <strong>awaiting admin approval</strong>. You will receive another email once your event has been reviewed.
                                         </p>
                                     </div>
-                                    
+
                                     <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse; background-color: #f3f4f6; border-radius: 8px; margin: 25px 0;">
                                         <tr>
                                             <td style="padding: 20px;">
@@ -485,13 +490,13 @@ class MailgunMailer:
                                             </td>
                                         </tr>
                                     </table>
-                                    
+
                                     <p style="margin: 0 0 20px; color: #374151; font-size: 16px; line-height: 1.6;">While waiting for approval, you can make any necessary preparations for your event.</p>
-                                    
+
                                     <p style="margin: 20px 0 0; color: #374151; font-size: 16px; line-height: 1.6;">Thank you for using AUP Events!</p>
                                 </td>
                             </tr>
-                            
+
                             <!-- Footer -->
                             <tr>
                                 <td style="padding: 30px; background-color: #f9fafb; border-top: 1px solid #e5e7eb; border-radius: 0 0 8px 8px; text-align: center;">
@@ -506,26 +511,28 @@ class MailgunMailer:
         </body>
         </html>
         """
-        
+
         return self.send_email(to_email, subject, text=text, html=html)
-        
-    def send_event_approval_confirmation(self, to_email, event_name, is_approved, rejection_reason=None):
+
+    def send_event_approval_confirmation(
+        self, to_email, event_name, is_approved, rejection_reason=None
+    ):
         """Send notification to event creator about event approval status"""
-        
+
         if is_approved:
             subject = f"✅ Event Approved: {event_name}"
-            
+
             text = f"""
             Hello,
-            
+
             Great news! Your event "{event_name}" has been approved and is now live on AUP Events.
-            
+
             Users can now see your event and register for it.
-            
+
             Thank you,
             AUP Events
             """
-            
+
             html = f"""
             <!DOCTYPE html>
             <html lang="en">
@@ -545,7 +552,7 @@ class MailgunMailer:
                                         <h1 style="margin: 0; color: #ffffff; font-weight: 600; font-size: 24px;">Event Approved!</h1>
                                     </td>
                                 </tr>
-                                
+
                                 <!-- Icon -->
                                 <tr>
                                     <td align="center" style="padding: 30px 0 10px;">
@@ -554,22 +561,22 @@ class MailgunMailer:
                                         </div>
                                     </td>
                                 </tr>
-                                
+
                                 <!-- Content -->
                                 <tr>
                                     <td style="padding: 10px 30px 40px;">
                                         <p style="margin: 0 0 20px; color: #374151; font-size: 16px; line-height: 1.6;">Hello,</p>
-                                        
+
                                         <p style="margin: 0 0 20px; color: #374151; font-size: 16px; line-height: 1.6;">
                                             <strong style="color: #10B981; font-size: 18px;">Great news!</strong> Your event <strong style="color: #111827;">"{event_name}"</strong> has been approved and is now live on AUP Events.
                                         </p>
-                                        
+
                                         <div style="padding: 20px; background-color: #D1FAE5; border-left: 4px solid #10B981; border-radius: 6px; margin: 25px 0;">
                                             <p style="margin: 0; color: #065F46; font-size: 15px; line-height: 1.6;">
                                                 Users can now see your event and register for it.
                                             </p>
                                         </div>
-                                        
+
                                         <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse; background-color: #f3f4f6; border-radius: 8px; margin: 25px 0;">
                                             <tr>
                                                 <td style="padding: 20px;">
@@ -584,11 +591,11 @@ class MailgunMailer:
                                                 </td>
                                             </tr>
                                         </table>
-                                        
+
                                         <p style="margin: 25px 0 0; color: #374151; font-size: 16px; line-height: 1.6;">We wish you a successful event!</p>
                                     </td>
                                 </tr>
-                                
+
                                 <!-- Footer -->
                                 <tr>
                                     <td style="padding: 30px; background-color: #f9fafb; border-top: 1px solid #e5e7eb; border-radius: 0 0 8px 8px; text-align: center;">
@@ -605,20 +612,20 @@ class MailgunMailer:
             """
         else:
             subject = f"❌ Event Rejected: {event_name}"
-            
+
             reason_text = f"\nReason: {rejection_reason}" if rejection_reason else ""
-            
+
             text = f"""
             Hello,
-            
+
             We regret to inform you that your event "{event_name}" has been rejected.{reason_text}
-            
+
             If you have any questions, please contact the administrator.
-            
+
             Thank you,
             AUP Events
             """
-            
+
             # Create the reason HTML block conditionally
             reason_html = ""
             if rejection_reason:
@@ -629,7 +636,7 @@ class MailgunMailer:
                     </p>
                 </div>
                 """
-            
+
             html = f"""
             <!DOCTYPE html>
             <html lang="en">
@@ -649,7 +656,7 @@ class MailgunMailer:
                                         <h1 style="margin: 0; color: #ffffff; font-weight: 600; font-size: 24px;">Event Rejected</h1>
                                     </td>
                                 </tr>
-                                
+
                                 <!-- Icon -->
                                 <tr>
                                     <td align="center" style="padding: 30px 0 10px;">
@@ -658,18 +665,18 @@ class MailgunMailer:
                                         </div>
                                     </td>
                                 </tr>
-                                
+
                                 <!-- Content -->
                                 <tr>
                                     <td style="padding: 10px 30px 40px;">
                                         <p style="margin: 0 0 20px; color: #374151; font-size: 16px; line-height: 1.6;">Hello,</p>
-                                        
+
                                         <p style="margin: 0 0 20px; color: #374151; font-size: 16px; line-height: 1.6;">
                                             We regret to inform you that your event <strong style="color: #111827;">"{event_name}"</strong> has been rejected.
                                         </p>
-                                        
+
                                         {reason_html}
-                                        
+
                                         <div style="padding: 20px; background-color: #f3f4f6; border-radius: 6px; margin: 25px 0;">
                                             <p style="margin: 0; color: #4b5563; font-size: 15px; line-height: 1.6;">
                                                 <strong style="color: #111827;">What can you do now?</strong>
@@ -680,15 +687,15 @@ class MailgunMailer:
                                                 <li>Submit a new event request</li>
                                             </ul>
                                         </div>
-                                        
+
                                         <p style="margin: 0 0 20px; color: #374151; font-size: 16px; line-height: 1.6;">
                                             If you have any questions or need clarification, please contact the administrator at <a href="mailto:harshbansal.contact@gmail.com" style="color: #3B82F6; text-decoration: none;">harshbansal.contact@gmail.com</a>.
                                         </p>
-                                        
+
                                         <p style="margin: 25px 0 0; color: #374151; font-size: 16px; line-height: 1.6;">We appreciate your understanding.</p>
                                     </td>
                                 </tr>
-                                
+
                                 <!-- Footer -->
                                 <tr>
                                     <td style="padding: 30px; background-color: #f9fafb; border-top: 1px solid #e5e7eb; border-radius: 0 0 8px 8px; text-align: center;">
@@ -703,7 +710,5 @@ class MailgunMailer:
             </body>
             </html>
             """
-        
+
         return self.send_email(to_email, subject, text=text, html=html)
-
-

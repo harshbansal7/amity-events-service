@@ -6,3 +6,4 @@ venv/
 .vscode/
 *.log
 node_modules
+.ruff_cache
