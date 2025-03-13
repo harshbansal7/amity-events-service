@@ -141,8 +141,8 @@ def init_event_routes(mongo):
                 event = event_model.get_event_by_id(str(event_id))
 
                 # Send approval email to admin
-                admin_email = getattr(Config, "ADMIN_EMAIL", "admin@example.com")
-                approve_url = f"{getattr(Config, 'FRONTEND_URL', '')}/admin/approve-event/{event_id}?token={approval_token}"
+                admin_email = Config.ADMIN_EMAIL
+                approve_url = f"{Config.API_BASE_URL}/admin/approve-event/{event_id}?token={approval_token}"
 
                 mailer.send_event_approval_request(
                     to_email=admin_email,
@@ -222,7 +222,7 @@ def init_event_routes(mongo):
     @token_required
     def get_pending_events(current_user):
         # Only admin can see pending events
-        if current_user != getattr(Config, "ADMIN_USER_ID", None):
+        if current_user != Config.ADMIN_USER_ID:
             return jsonify({"message": "Unauthorized access"}), 403
 
         try:
@@ -312,7 +312,7 @@ def init_event_routes(mongo):
                 # Only admin can approve events via POST
                 @token_required
                 def approve_as_admin(current_user):
-                    if current_user != getattr(Config, "ADMIN_USER_ID", None):
+                    if current_user != Config.ADMIN_USER_ID:
                         return jsonify({"message": "Unauthorized access"}), 403
 
                     data = request.get_json()
@@ -375,7 +375,7 @@ def init_event_routes(mongo):
     @token_required
     def reject_event(current_user, event_id):
         # Only admin can reject events
-        if current_user != getattr(Config, "ADMIN_USER_ID", None):
+        if current_user != Config.ADMIN_USER_ID:
             return jsonify({"message": "Unauthorized access"}), 403
 
         try:
@@ -433,7 +433,7 @@ def init_event_routes(mongo):
                 return jsonify({"message": "Event not found"}), 404
 
             # Only creator or admin can check approval status
-            is_admin = current_user == getattr(Config, "ADMIN_USER_ID", None)
+            is_admin = current_user == Config.ADMIN_USER_ID
 
             if str(event.get("creator_id")) != str(current_user) and not is_admin:
                 return jsonify({"message": "Unauthorized access"}), 403

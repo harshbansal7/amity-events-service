@@ -59,7 +59,7 @@ class Event:
             )
 
         # Check if kill switch is enabled (default: True)
-        require_approval = getattr(Config, "EVENT_APPROVAL_REQUIRED", True)
+        require_approval = Config.EVENT_APPROVAL_REQUIRED
 
         custom_fields = (
             event_data.get("custom_fields", "").split(",")

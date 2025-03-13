@@ -1,5 +1,5 @@
 import requests
-import os
+from config import Config
 
 ALLOWED_EXTENSIONS = {
     "png",
@@ -26,7 +26,7 @@ def save_image(file):
         try:
             # Prepare the file upload to Fivemerr
             files = {"file": (file.filename, file, file.mimetype)}
-            headers = {"Authorization": os.getenv("FIVEMERR_API_KEY")}
+            headers = {"Authorization": Config.FIVEMERR_API_KEY}
 
             # Make the POST request to Fivemerr
             response = requests.post(

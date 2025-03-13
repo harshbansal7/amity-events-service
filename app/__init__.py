@@ -29,18 +29,17 @@ def create_app():
     app.register_blueprint(init_event_routes(mongo), url_prefix="/api")
 
     # Configure CORS
+    allowed_origins = [
+        "https://www.aup.events",
+        "https://aup.events",
+        "https://app.aup.events",
+    ]
+    if app.config["FLASK_ENV"] == "development":
+        allowed_origins.append("http://localhost:3000")
+
     CORS(
         app,
-        resources={
-            r"/api/*": {
-                "origins": [
-                    "http://localhost:3000",
-                    "https://www.aup.events",
-                    "https://aup.events",
-                    "https://app.aup.events",
-                ]
-            }
-        },
+        resources={r"/api/*": {"origins": allowed_origins}},
         supports_credentials=True,
         allow_headers=["Content-Type", "Authorization"],
         methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],

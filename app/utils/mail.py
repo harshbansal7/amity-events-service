@@ -280,20 +280,9 @@ class MailgunMailer:
                 except ValueError:
                     pass  # Keep as is if parsing fails
 
-        # Create a direct API approval URL that doesn't require the frontend
-        api_base_url = getattr(Config, "API_BASE_URL", "")
-        if not api_base_url:
-            # Extract domain from frontend URL if API URL not configured
-            frontend_url = getattr(Config, "FRONTEND_URL", "")
-            if frontend_url and frontend_url.startswith("https://"):
-                domain = frontend_url.split("//", 1)[1].split("/", 1)[0]
-                api_base_url = f"https://api.{domain}"
-            else:
-                api_base_url = "https://api.aup.events"
-
         # Direct approval link that will work with the GET endpoint we created
         direct_approval_url = (
-            f"{api_base_url}/api/admin/events/{event_id}/approve?token={token}"
+            f"{Config.API_BASE_URL}/api/admin/events/{event_id}/approve?token={token}"
         )
 
         subject = f"🔔 New Event Approval Request: {event_name}"
