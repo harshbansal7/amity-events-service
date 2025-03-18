@@ -10,6 +10,7 @@ import random
 import string
 import secrets
 from config import Config
+import json
 
 
 class PDF(FPDF):
@@ -31,6 +32,7 @@ class Event:
         self.collection = self.mongo.db.users
         self.events_collection = self.mongo.db.events
         self.user_model = User(mongo)
+        self.external_participants_collection = self.mongo.db.external_participants
 
     def create_event(self, event_data, creator_id):
         def generate_event_code():
@@ -61,11 +63,8 @@ class Event:
         # Check if kill switch is enabled (default: True)
         require_approval = Config.EVENT_APPROVAL_REQUIRED
 
-        custom_fields = (
-            event_data.get("custom_fields", "").split(",")
-            if event_data.get("custom_fields")
-            else []
-        )
+        # Process custom fields - handle new enhanced format or legacy format
+        custom_fields = self._process_custom_fields(event_data.get("custom_fields"))
 
         event = {
             "name": event_data["name"],
@@ -101,6 +100,57 @@ class Event:
 
         result = self.events_collection.insert_one(event)
         return result.inserted_id, approval_token
+
+    def _process_custom_fields(self, custom_fields_data):
+        """Process custom fields data to support both legacy and new formats"""
+        # If already a list of dictionaries, process it
+        if isinstance(custom_fields_data, list):
+            processed_fields = []
+            for field in custom_fields_data:
+                if isinstance(field, dict):
+                    # Make sure the field has all required properties
+                    processed_field = {
+                        "name": field.get("name", ""),
+                        "type": field.get("type", "string"),
+                        "required": field.get("required", False),
+                    }
+                    # Add options if type is 'select'
+                    if field.get("type") == "select" and "options" in field:
+                        processed_field["options"] = field["options"]
+                    processed_fields.append(processed_field)
+                else:
+                    # If it's a string in the list, convert to new format
+                    processed_fields.append(
+                        {
+                            "name": str(field).strip(),
+                            "type": "string",
+                            "required": False,
+                        }
+                    )
+            return processed_fields
+
+        # If it's a string, try to parse as JSON first
+        elif isinstance(custom_fields_data, str):
+            try:
+                # Try parsing as JSON first
+                if custom_fields_data.strip().startswith("["):
+                    fields = json.loads(custom_fields_data)
+                    if isinstance(fields, list):
+                        return self._process_custom_fields(
+                            fields
+                        )  # Process the parsed list
+                    return []  # Invalid JSON structure
+            except json.JSONDecodeError:
+                # If JSON parsing fails, treat as legacy comma-separated string
+                fields = custom_fields_data.split(",") if custom_fields_data else []
+                return [
+                    {"name": field.strip(), "type": "string", "required": False}
+                    for field in fields
+                    if field.strip()
+                ]
+
+        # Default: return empty array
+        return []
 
     def get_all_events(self, include_pending=False):
         # If include_pending is False, only show approved events
@@ -229,6 +279,13 @@ class Event:
         if not participant:
             return False, "Participant not found"
 
+        # Validate custom field values against required fields
+        validation_result = self._validate_custom_field_values(
+            event.get("custom_fields", []), custom_field_values
+        )
+        if validation_result:
+            return False, f"Missing required field: {validation_result}"
+
         # Create participant entry with custom fields
         participant_entry = {
             "enrollment_number": enrollment_number,
@@ -247,6 +304,20 @@ class Event:
         )
 
         return True, "Successfully registered for event"
+
+    def _validate_custom_field_values(self, custom_fields, values):
+        """Validate that all required custom fields have values"""
+        # Check if custom_fields is already in enhanced format
+        if isinstance(custom_fields, list) and any(
+            isinstance(f, dict) for f in custom_fields
+        ):
+            for field in custom_fields:
+                if isinstance(field, dict) and field.get("required", False):
+                    field_name = field.get("name")
+                    if field_name not in values or not values[field_name]:
+                        return field_name
+        # If validation passes or there are no required fields
+        return None
 
     def delete_event(self, event_id, user_id):
         event = self.get_event_by_id(event_id)
@@ -284,7 +355,6 @@ class Event:
             "description",
             "prizes",
             "image_url",
-            "custom_fields",
             "custom_slug",
         ]
         duration_fields = ["duration_days", "duration_hours", "duration_minutes"]
@@ -314,6 +384,12 @@ class Event:
                 "hours": hours,
                 "minutes": minutes,
             }
+
+        # Handle custom fields specifically to ensure proper formatting
+        if "custom_fields" in update_data:
+            update_fields["custom_fields"] = self._process_custom_fields(
+                update_data["custom_fields"]
+            )
 
         if not update_fields:
             return False, "No valid fields to update"
@@ -728,3 +804,59 @@ class Event:
         except Exception as e:
             print(f"Error marking batch attendance: {str(e)}")
             return False, "Failed to mark attendance"
+
+    def get_custom_field_schema(self, event_id):
+        """Get the custom field schema for an event"""
+        event = self.get_event_by_id(event_id)
+        if not event:
+            return None
+
+        # Process and return custom fields in the enhanced format
+        custom_fields = event.get("custom_fields", [])
+        if isinstance(custom_fields, list):
+            # Check if it's already in enhanced format or needs conversion
+            if any(isinstance(field, dict) for field in custom_fields):
+                return custom_fields
+            else:
+                # Convert legacy format to new format
+                return [
+                    {"name": field, "type": "string", "required": False}
+                    for field in custom_fields
+                    if field.strip()
+                ]
+        elif isinstance(custom_fields, str):
+            # Handle old string format
+            fields = custom_fields.split(",") if custom_fields else []
+            return [
+                {"name": field.strip(), "type": "string", "required": False}
+                for field in fields
+                if field.strip()
+            ]
+        return []
+
+    def update_participant_custom_fields(
+        self, event_id, enrollment_number, custom_field_values
+    ):
+        """Update a participant's custom field values"""
+        event = self.get_event_by_id(event_id)
+        if not event:
+            return False, "Event not found"
+
+        # Validate custom field values against required fields
+        validation_result = self._validate_custom_field_values(
+            event.get("custom_fields", []), custom_field_values
+        )
+        if validation_result:
+            return False, f"Missing required field: {validation_result}"
+
+        result = self.events_collection.update_one(
+            {
+                "_id": ObjectId(event_id),
+                "participants.enrollment_number": enrollment_number,
+            },
+            {"$set": {"participants.$.custom_field_values": custom_field_values}},
+        )
+
+        if result.modified_count:
+            return True, "Custom field values updated successfully"
+        return False, "Failed to update custom field values"

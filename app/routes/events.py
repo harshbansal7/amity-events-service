@@ -11,6 +11,7 @@ from app.utils.mail import MailgunMailer
 from datetime import datetime
 import re
 from config import Config
+from threading import Thread
 
 mailer = MailgunMailer()
 events_bp = Blueprint("events", __name__)
@@ -462,20 +463,23 @@ def init_event_routes(mongo):
     def register_for_event(current_user, event_identifier, **kwargs):
         try:
             data = request.get_json()
-            custom_field_values = (
-                json.loads(data.get("custom_field_values", "{}")) if data else {}
-            )
+            custom_field_values = data.get("custom_field_values", {})
+            if isinstance(custom_field_values, str):
+                try:
+                    custom_field_values = json.loads(custom_field_values)
+                except json.JSONDecodeError:
+                    custom_field_values = {}
 
-            # Check if event_identifier is a valid ObjectId
+            if not isinstance(custom_field_values, dict):
+                custom_field_values = {}
+
+            # Check if event_identifier is valid ObjectId or custom slug
             if ObjectId.is_valid(event_identifier):
-                # Directly use it as event_id
                 event_id = event_identifier
             else:
-                # Otherwise, try to look it up as a custom slug
                 deeplink = mongo.db.deeplinks.find_one({"slug": event_identifier})
                 if not deeplink:
                     return jsonify({"message": "Event not found"}), 404
-
                 event_id = deeplink["event_id"]
 
             # Get event details
@@ -483,18 +487,10 @@ def init_event_routes(mongo):
             if not event:
                 return jsonify({"message": "Event not found"}), 404
 
-            # Check if event is approved
+            # Check approval
             if not event.get("is_approved", False):
-                return (
-                    jsonify(
-                        {
-                            "message": "This event is pending approval and not available for registration yet"
-                        }
-                    ),
-                    403,
-                )
+                return jsonify({"message": "This event is pending approval"}), 403
 
-            # Get user details for email
             # Get user details for email
             user = mongo.db.users.find_one({"enrollment_number": current_user})
             if not user:
@@ -513,7 +509,7 @@ def init_event_routes(mongo):
             if not success:
                 return jsonify({"message": message}), 400
 
-            # Format date
+            # Format date for email
             if isinstance(event["date"], str):
                 try:
                     event_date = datetime.strptime(
@@ -525,30 +521,39 @@ def init_event_routes(mongo):
                             event["date"], "%Y-%m-%dT%H:%M:%S"
                         )
                     except ValueError:
-                        event_date = datetime.now()  # fallback
+                        event_date = datetime.now()
             else:
                 event_date = event["date"]
 
             formatted_date = event_date.strftime("%B %d, %Y at %I:%M %p")
 
-            # Send confirmation email to participant
-            mailer.send_event_registration_confirmation(
-                to_email=user["amity_email"],
-                name=user["name"],
-                event_name=event["name"],
-                event_date=formatted_date,
-                venue=event["venue"],
-                organizer_email=organizer["amity_email"],
-            )
+            # Send emails asynchronously using threads
+            def send_emails():
+                try:
+                    # Send confirmation to participant
+                    mailer.send_event_registration_confirmation(
+                        to_email=user["amity_email"],
+                        name=user["name"],
+                        event_name=event["name"],
+                        event_date=formatted_date,
+                        venue=event["venue"],
+                        organizer_email=organizer["amity_email"],
+                    )
 
-            # Send notification email to organizer
-            mailer.send_event_registration_notification(
-                to_email=organizer["amity_email"],
-                name=user["name"],
-                event_name=event["name"],
-            )
+                    # Send notification to organizer
+                    mailer.send_event_registration_notification(
+                        to_email=organizer["amity_email"],
+                        name=user["name"],
+                        event_name=event["name"],
+                    )
+                except Exception as e:
+                    print(f"Error sending registration emails: {str(e)}")
+
+            # Start email sending in background
+            Thread(target=send_emails).start()
 
             return jsonify({"message": message}), 200
+
         except Exception as e:
             return jsonify({"message": f"Error registering for event: {str(e)}"}), 500
 
@@ -1004,6 +1009,86 @@ def init_event_routes(mongo):
         except Exception as e:
             return (
                 jsonify({"message": f"Error checking slug availability: {str(e)}"}),
+                500,
+            )
+
+    @events_bp.route("/events/<event_identifier>/custom-fields", methods=["GET"])
+    @token_required
+    def get_custom_fields_schema(current_user, event_identifier):
+        """Get the schema for custom fields for an event"""
+        try:
+            # Check if event_identifier is a valid ObjectId
+            if ObjectId.is_valid(event_identifier):
+                # Directly use it as event_id
+                event_id = event_identifier
+            else:
+                # Otherwise, try to look it up as a custom slug
+                deeplink = mongo.db.deeplinks.find_one({"slug": event_identifier})
+                if not deeplink:
+                    return jsonify({"message": "Event not found"}), 404
+                event_id = deeplink["event_id"]
+
+            # Get the event's custom fields schema
+            custom_fields = event_model.get_custom_field_schema(event_id)
+            if custom_fields is None:
+                return jsonify({"message": "Event not found"}), 404
+
+            return jsonify({"custom_fields": custom_fields}), 200
+        except Exception as e:
+            return (
+                jsonify({"message": f"Error fetching custom fields schema: {str(e)}"}),
+                500,
+            )
+
+    @events_bp.route(
+        "/events/<event_identifier>/participants/<enrollment_number>/custom-fields",
+        methods=["PUT"],
+    )
+    @token_required
+    def update_custom_field_values(current_user, event_identifier, enrollment_number):
+        """Update a participant's custom field values with validation"""
+        try:
+            # Check if event_identifier is a valid ObjectId
+            if ObjectId.is_valid(event_identifier):
+                # Directly use it as event_id
+                event_id = event_identifier
+            else:
+                # Otherwise, try to look it up as a custom slug
+                deeplink = mongo.db.deeplinks.find_one({"slug": event_identifier})
+                if not deeplink:
+                    return jsonify({"message": "Event not found"}), 404
+                event_id = deeplink["event_id"]
+
+            # Get the event
+            event = event_model.get_event_by_id(event_id)
+            if not event:
+                return jsonify({"message": "Event not found"}), 404
+
+            # Check if the requester is authorized (event creator or the participant)
+            if (
+                str(event["creator_id"]) != str(current_user)
+                and current_user != enrollment_number
+            ):
+                return (
+                    jsonify({"message": "Unauthorized to update participant details"}),
+                    403,
+                )
+
+            data = request.get_json()
+            custom_field_values = data.get("custom_field_values", {})
+
+            # Update the participant's custom field values with validation
+            success, message = event_model.update_participant_custom_fields(
+                event_id, enrollment_number, custom_field_values
+            )
+
+            if success:
+                return jsonify({"message": message}), 200
+            else:
+                return jsonify({"message": message}), 400
+        except Exception as e:
+            return (
+                jsonify({"message": f"Error updating custom field values: {str(e)}"}),
                 500,
             )
 
